@@ -14,7 +14,7 @@ links exactly what it needs.
 | **ADFText** | bounded edit distance, tokenizer kernels | none |
 | **ADFIO** | POSIX file channel, read-only memory mapping, cross-process atomics | none |
 | **ADFMacroSupport** | swift-syntax helpers for macro compiler plugins: shared diagnostics, Swift source-literal escaping, identifier backticking | swift-syntax |
-| **ADFoundation** | umbrella — re-exports `ADFCore` + `ADFUnicode` | — |
+| **ADFoundation** | umbrella — re-exports every zero-dep tier (`ADFCore` / `ADFUnicode` / `ADFText` / `ADFIO`) | — |
 
 `ADFCore` is **Foundation-free, swift-syntax-free, and carries no transitive package dependency**:
 it is consumed by the portable `ADJSONCore` engine and by the apple-docs zero-external-dependency
@@ -27,8 +27,9 @@ tiers never pull it in.
 - Building a **runtime engine** (parser, store, builder): take `ADFCore`, plus `ADFUnicode` /
   `ADFText` / `ADFIO` only for the kernels you actually call.
 - Writing a **macro compiler plugin**: take `ADFMacroSupport` (it already links swift-syntax).
-- Want the common case in one import: `ADFoundation` re-exports `ADFCore` + `ADFUnicode`; import
-  `ADFText`, `ADFIO`, or `ADFMacroSupport` directly when you need them.
+- Want everything in one import: `ADFoundation` re-exports all four zero-dependency runtime tiers
+  (`ADFCore` / `ADFUnicode` / `ADFText` / `ADFIO`). `ADFMacroSupport` stays separate — macro plugins
+  import it directly — so a plain `import ADFoundation` never pulls in swift-syntax.
 
 ## Architecture
 

@@ -111,10 +111,11 @@ let package = Package(
         .target(
             name: "ADFIO", dependencies: ["ADFCore", "ADFAtomics"], swiftSettings: kernelSettings,
             plugins: libraryBuildPlugins),
-        // ADFoundation — umbrella re-export of the always-available core tiers.
+        // ADFoundation — umbrella re-export of every zero-dependency runtime tier (ADFMacroSupport is
+        // excluded: it links swift-syntax and is imported directly by macro plugins).
         .target(
-            name: "ADFoundation", dependencies: ["ADFCore", "ADFUnicode"], swiftSettings: strictSettings,
-            plugins: libraryBuildPlugins),
+            name: "ADFoundation", dependencies: ["ADFCore", "ADFIO", "ADFText", "ADFUnicode"],
+            swiftSettings: strictSettings, plugins: libraryBuildPlugins),
         // ADFMacroSupport — swift-syntax helpers shared by macro compiler plugins: a uniform
         // `DiagnosticMessage` + builder, Swift source-literal escaping, and identifier backticking.
         // Pure swift-syntax codegen (no pointers), so it takes strict settings but not the memory-

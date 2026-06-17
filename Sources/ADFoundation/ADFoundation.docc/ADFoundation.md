@@ -16,9 +16,10 @@ primitives, split into tiers by dependency footprint so each consumer links exac
 - ``ADFMacroSupport`` — swift-syntax helpers shared by macro compiler plugins (diagnostics,
   source-literal escaping, identifier backticking). The only tier that links swift-syntax.
 
-`import ADFoundation` re-exports ``ADFCore`` and ``ADFUnicode``. Import ``ADFText``, ``ADFIO``, or
-``ADFMacroSupport`` directly when you need them. The core tiers floor at macOS 15 / iOS 18 / tvOS 18 /
-watchOS 11 / visionOS 2 and are Foundation-free.
+`import ADFoundation` re-exports every zero-dependency runtime tier — ``ADFCore``, ``ADFUnicode``,
+``ADFText``, and ``ADFIO``. ``ADFMacroSupport`` is imported directly by macro plugins (it links
+swift-syntax, so the umbrella leaves it out). Everything floors at macOS 15 / iOS 18 / tvOS 18 /
+watchOS 11 / visionOS 2 and is Foundation-free.
 
 ## Topics
 

@@ -37,10 +37,23 @@ let testSettings: [SwiftSetting] =
 // libraries only in dev/CI.
 let isDev = Context.environment["ADF_DEV"] != nil
 
-var packageDependencies: [Package.Dependency] = []
+var packageDependencies: [Package.Dependency] = [
+    // swift-syntax backs ADFMacroSupport (the shared macro-plugin helpers) — the ONLY non-dev
+    // dependency, and ONLY the ADFMacroSupport product links it. The core tiers
+    // (ADFCore / ADFUnicode / ADFText / ADFIO) stay swift-syntax-free. Every consumer that links
+    // ADFMacroSupport (the ADJSON / ADSQL / URLBuilder macro plugins) already depends on
+    // swift-syntax 603 for its own macros, so this adds nothing new to their resolution graph.
+    .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "603.0.0")
+]
 if isDev {
     packageDependencies.append(
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.0.0"))
+    // ordo-one's statistically-rigorous benchmark framework (p-percentile latencies + throughput),
+    // matching the sibling packages. The suite lives in `Benchmarks/ADFoundationSuite` and runs via
+    // `ADF_DEV=1 swift package benchmark`. Dev-only, so packages depending on ADFoundation never
+    // resolve it.
+    packageDependencies.append(
+        .package(url: "https://github.com/ordo-one/benchmark", from: "1.4.0"))
 }
 
 // Build-time formatting enforcement attaches to the libraries only in dev/CI. A build-tool plugin on
@@ -74,9 +87,15 @@ let package = Package(
         .library(name: "ADFText", targets: ["ADFText"]),
         // POSIX file channel + read-only memory mapping + cross-process atomics. Stdlib + libc only.
         .library(name: "ADFIO", targets: ["ADFIO"]),
+        // Shared swift-syntax helpers for macro compiler plugins (diagnostics, Swift source-literal
+        // escaping, identifier backticking). The one tier that links swift-syntax.
+        .library(name: "ADFMacroSupport", targets: ["ADFMacroSupport"]),
     ],
     dependencies: packageDependencies,
     targets: [
+        // ADFAtomics — C11 cross-process atomics over raw shared memory. Header-only
+        // static inlines; re-exported by ADFIO. No Swift settings (C target).
+        .target(name: "ADFAtomics"),
         // ADFCore — pointer-level byte primitives; SE-0458 strict memory safety.
         .target(name: "ADFCore", swiftSettings: kernelSettings, plugins: libraryBuildPlugins),
         // ADFUnicode — generic Unicode kernel over ADFCore byte buffers.
@@ -87,14 +106,33 @@ let package = Package(
         .target(
             name: "ADFText", dependencies: ["ADFCore", "ADFUnicode"], swiftSettings: strictSettings,
             plugins: libraryBuildPlugins),
-        // ADFIO — POSIX storage primitives; SE-0458 strict memory safety.
-        .target(name: "ADFIO", dependencies: ["ADFCore"], swiftSettings: kernelSettings, plugins: libraryBuildPlugins),
+        // ADFIO — POSIX storage primitives over libc + the re-exported C11 atomics;
+        // SE-0458 strict memory safety.
+        .target(
+            name: "ADFIO", dependencies: ["ADFCore", "ADFAtomics"], swiftSettings: kernelSettings,
+            plugins: libraryBuildPlugins),
         // ADFoundation — umbrella re-export of the always-available core tiers.
         .target(
             name: "ADFoundation", dependencies: ["ADFCore", "ADFUnicode"], swiftSettings: strictSettings,
             plugins: libraryBuildPlugins),
+        // ADFMacroSupport — swift-syntax helpers shared by macro compiler plugins: a uniform
+        // `DiagnosticMessage` + builder, Swift source-literal escaping, and identifier backticking.
+        // Pure swift-syntax codegen (no pointers), so it takes strict settings but not the memory-
+        // safety kernel. The only tier that links swift-syntax.
+        .target(
+            name: "ADFMacroSupport",
+            dependencies: [
+                .product(name: "SwiftSyntax", package: "swift-syntax"),
+                .product(name: "SwiftDiagnostics", package: "swift-syntax"),
+            ],
+            swiftSettings: strictSettings,
+            plugins: libraryBuildPlugins),
 
         .testTarget(name: "ADFCoreTests", dependencies: ["ADFCore"], swiftSettings: testSettings),
+        .testTarget(name: "ADFTextTests", dependencies: ["ADFText"], swiftSettings: testSettings),
+        .testTarget(name: "ADFIOTests", dependencies: ["ADFIO"], swiftSettings: testSettings),
+        .testTarget(
+            name: "ADFMacroSupportTests", dependencies: ["ADFMacroSupport"], swiftSettings: testSettings),
 
         // Developer tooling. The command plugins are dependency-free (they drive the toolchain's
         // bundled `swift format`), so they impose nothing on packages that depend on ADFoundation.
@@ -110,3 +148,19 @@ let package = Package(
         .plugin(name: "LintBuild", capability: .buildTool()),
     ]
 )
+
+// ordo-one benchmark suite (ADF_DEV-gated): compares the adaptive primitives — edit distance
+// (full / banded / adaptive) and UTF-8 validation (scalar / SIMD) — across input sizes, so the
+// dispatch thresholds stay benchmark-backed. Runs via `ADF_DEV=1 swift package benchmark`.
+if isDev {
+    package.targets.append(
+        .executableTarget(
+            name: "ADFoundationSuite",
+            dependencies: [
+                "ADFCore", "ADFText",
+                .product(name: "Benchmark", package: "benchmark"),
+            ],
+            path: "Benchmarks/ADFoundationSuite",
+            swiftSettings: strictSettings,
+            plugins: [.plugin(name: "BenchmarkPlugin", package: "benchmark")]))
+}

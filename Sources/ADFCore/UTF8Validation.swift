@@ -50,4 +50,76 @@ public enum UTF8Validation {
         guard !(scalar >= 0xD800 && scalar <= 0xDFFF) else { return nil }
         return length
     }
+
+    /// Byte offset of the first malformed UTF-8 sequence in `bytes`, or `nil` if the whole buffer is
+    /// well-formed. Pure scalar reference implementation (one decode per sequence).
+    public static func firstInvalidByteScalar(_ bytes: UnsafeRawBufferPointer) -> Int? {
+        let n = bytes.count
+        guard n > 0, let base = bytes.baseAddress else { return nil }
+        let p = unsafe base.assumingMemoryBound(to: UInt8.self)
+        var i = 0
+        while i < n {
+            if unsafe p[i] < 0x80 {
+                i += 1
+            } else {
+                guard let length = unsafe sequenceLength(p, i, n) else { return i }
+                i += length
+            }
+        }
+        return nil
+    }
+
+    /// Smallest buffer for which the SIMD ASCII fast path is worth attempting (below it the vector
+    /// setup does not pay and scalar is used). Tuned from the benchmark crossover.
+    @usableFromInline static let simdMinBytes = 16
+
+    /// Byte offset of the first malformed UTF-8 sequence in `bytes`, or `nil` if well-formed.
+    /// Adaptive: pure-ASCII runs are skipped 16 bytes at a time with a SIMD high-bit test; any
+    /// multi-byte sequence falls back to scalar validation. Result-identical to
+    /// ``firstInvalidByteScalar(_:)``.
+    public static func firstInvalidByte(_ bytes: UnsafeRawBufferPointer) -> Int? {
+        let n = bytes.count
+        guard n >= simdMinBytes, let base = bytes.baseAddress else {
+            return unsafe firstInvalidByteScalar(bytes)
+        }
+        let p = unsafe base.assumingMemoryBound(to: UInt8.self)
+        let highBits = SIMD16<UInt8>(repeating: 0x80)
+        // Density probe: the SIMD ASCII skip only pays on long ASCII runs. If the first chunk already
+        // holds a non-ASCII byte the input is multibyte-dense, where repeated 16-byte probes cost more
+        // than they save (benchmarked at 0.66–0.81×), so validate scalar instead.
+        let firstChunk = unsafe UnsafeRawPointer(p).loadUnaligned(as: SIMD16<UInt8>.self)
+        if (firstChunk & highBits).max() != 0 {
+            return unsafe firstInvalidByteScalar(bytes)
+        }
+        var i = 0
+        while i < n {
+            if unsafe p[i] < 0x80 {
+                while i + 16 <= n {
+                    let chunk = unsafe UnsafeRawPointer(p + i).loadUnaligned(as: SIMD16<UInt8>.self)
+                    if (chunk & highBits).max() != 0 { break }  // a non-ASCII byte lies in this chunk
+                    i += 16
+                }
+                while i < n, unsafe p[i] < 0x80 { i += 1 }
+            } else {
+                guard let length = unsafe sequenceLength(p, i, n) else { return i }
+                i += length
+            }
+        }
+        return nil
+    }
+
+    /// `true` iff `bytes` is well-formed UTF-8 (adaptive SIMD path).
+    public static func isValidUTF8(_ bytes: UnsafeRawBufferPointer) -> Bool {
+        unsafe firstInvalidByte(bytes) == nil
+    }
+
+    /// `[UInt8]` convenience for ``firstInvalidByte(_:)``.
+    public static func firstInvalidByte(_ bytes: [UInt8]) -> Int? {
+        unsafe bytes.withUnsafeBytes { unsafe firstInvalidByte($0) }
+    }
+
+    /// `[UInt8]` convenience for ``firstInvalidByteScalar(_:)``.
+    public static func firstInvalidByteScalar(_ bytes: [UInt8]) -> Int? {
+        unsafe bytes.withUnsafeBytes { unsafe firstInvalidByteScalar($0) }
+    }
 }

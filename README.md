@@ -13,19 +13,48 @@ links exactly what it needs.
 | **ADFUnicode** | canonical decomposition (NFD), case-folding, Unicode property sets | none |
 | **ADFText** | bounded edit distance, tokenizer kernels | none |
 | **ADFIO** | POSIX file channel, read-only memory mapping, cross-process atomics | none |
+| **ADFMacroSupport** | swift-syntax helpers for macro compiler plugins: shared diagnostics, Swift source-literal escaping, identifier backticking | swift-syntax |
 | **ADFoundation** | umbrella — re-exports `ADFCore` + `ADFUnicode` | — |
 
 `ADFCore` is **Foundation-free, swift-syntax-free, and carries no transitive package dependency**:
 it is consumed by the portable `ADJSONCore` engine and by the apple-docs zero-external-dependency
-dylib, both of which must keep clean resolution graphs. `import ADFoundation` re-exports `ADFCore`
-and `ADFUnicode`; import `ADFText` or `ADFIO` directly when you need them.
+dylib, both of which must keep clean resolution graphs. **`ADFMacroSupport` is the only tier with an
+external dependency** (swift-syntax); it is linked solely by macro compiler plugins, so the core
+tiers never pull it in.
+
+### Choosing a tier
+
+- Building a **runtime engine** (parser, store, builder): take `ADFCore`, plus `ADFUnicode` /
+  `ADFText` / `ADFIO` only for the kernels you actually call.
+- Writing a **macro compiler plugin**: take `ADFMacroSupport` (it already links swift-syntax).
+- Want the common case in one import: `ADFoundation` re-exports `ADFCore` + `ADFUnicode`; import
+  `ADFText`, `ADFIO`, or `ADFMacroSupport` directly when you need them.
+
+## Architecture
+
+ADFoundation is the dependency root beneath the four g-cqd engines. Each links only the tiers it uses:
+
+| Engine | Links from ADFoundation |
+|---|---|
+| **ADJSON** | `ADJSONCore` → `ADFCore` (+ `ADFUnicode`); `ADJSONMacros` → `ADFMacroSupport` |
+| **ADSQL** | `ADDBCore` → `ADFCore` + `ADFIO`; `ADSQLMacros` → `ADFMacroSupport` |
+| **URLBuilder** | `URLBuilder` → `ADFCore`; `URLBuilderMacros` → `ADFMacroSupport` |
+| **apple-docs** | `ADBase` / `ADEmbed` → `ADFCore` / `ADFUnicode`; `ADSearchCascade` → `ADFText` |
+
+Domain code stays with its owner: the JSON writer/escaper lives in ADJSON, the SQLite-FTS5 tokenizers
+in ADSQL, URL semantics in URLBuilder, and the BERT/transformers.js tokenizers in apple-docs.
+ADFoundation holds only the domain-neutral kernels they share — e.g. `ADFUnicode` carries the
+transformers.js-parity Unicode tables, while ADSQL keeps its distinct SQLite-unicode61 tables.
 
 ## Design principles
 
 - **No traps at trust boundaries.** Size/offset arithmetic on untrusted input returns `nil`
-  (see `checkedAdding(_:)`), never aborting the host process.
+  (see `checkedAdding(_:)`), never aborting the host process; the binary reader and mmap views are
+  bounded.
 - **Strict memory safety.** The pointer kernels (`ADFCore`, `ADFIO`) build with SE-0458
   `-strict-memory-safety`; every unsafe construct is explicitly `unsafe`.
+- **Neutral errors at the seam.** `ADFIO` throws a domain-neutral `IOError(errno:op:)`; a consumer
+  with a richer taxonomy (e.g. a database error enum) maps it at its own boundary.
 - **No recursion on untrusted input.** Decoders and scanners are iterative.
 
 ## Platforms
@@ -36,8 +65,17 @@ deliberately not adopted.
 
 ## Usage
 
+Consumers resolve ADFoundation by its published remote by default, or override to a local checkout
+via a per-dependency path environment variable — so the repositories need not live side by side:
+
 ```swift
-.package(url: "https://github.com/g-cqd/ADFoundation.git", branch: "main")
+// In a consumer's Package.swift:
+let adFoundation: Package.Dependency =
+    if let path = Context.environment["ADFOUNDATION_PATH"], !path.isEmpty {
+        .package(path: path)
+    } else {
+        .package(url: "https://github.com/g-cqd/ADFoundation.git", branch: "main")
+    }
 ```
 
 ```swift
@@ -51,8 +89,9 @@ deliberately not adopted.
 ```bash
 swift build
 swift test
-swift package format          # format in place (swift-format)
-ADF_DEV=1 swift package lint   # formatting + shipped-library discipline
+swift package format            # format in place (swift-format)
+ADF_DEV=1 swift package lint    # formatting + shipped-library discipline
+ADF_DEV=1 swift package benchmark             # ordo-one suite (adaptive primitives)
 ADF_DEV=1 swift package generate-documentation
 ```
 

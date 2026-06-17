@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Format lint
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      # The toolchain ships swift-format; the `.swift-version` file pins 6.3.2.
+      - name: swift format lint --strict
+        run: swift format lint --strict --recursive Sources Tests Plugins Package.swift
+
+  test-macos:
+    name: macOS (${{ matrix.config }})
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [debug, release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: swift --version
+        run: swift --version
+      - name: Build
+        run: swift build -c ${{ matrix.config }}
+      - name: Test
+        run: swift test -c ${{ matrix.config }}
+
+  test-linux:
+    name: Linux (${{ matrix.config }})
+    runs-on: ubuntu-latest
+    # Pin to the toolchain in `.swift-version`. Adjust the tag if the runner image lags.
+    container: swift:6.3
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [debug, release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: swift build -c ${{ matrix.config }}
+      - name: Test
+        run: swift test -c ${{ matrix.config }}
+
+  sanitizers:
+    name: Sanitizer (${{ matrix.sanitize }})
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitize: [address, thread]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test under ${{ matrix.sanitize }}Sanitizer
+        run: swift test --sanitize=${{ matrix.sanitize }}

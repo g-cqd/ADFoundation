@@ -18,7 +18,7 @@ struct ValidateUTF8Tests {
             "", "a", "hello world",
             String(repeating: "x", count: 100),  // long all-ASCII (exercises the SIMD skip)
             "café résumé costs €1",
-            "😀🎉 mixed 日本語 text long enough to cross several sixteen-byte chunks for sure",
+            "😀🎉 mixed 日本語 text long enough to cross several sixteen-byte chunks for sure"
         ]
         for s in samples {
             let bytes = Array(s.utf8)
@@ -49,13 +49,13 @@ struct ValidateUTF8Tests {
         var rng = LCG(seed: 0xD1B5_4A32_D192_ED03)
         let pool: [UInt32] = [0x41, 0x7A, 0x20, 0x09, 0x00E9, 0x20AC, 0x65E5, 0x1F600]  // a z sp tab é € 日 😀
         var mismatches = 0
-        for _ in 0..<3000 {
+        for _ in 0 ..< 3000 {
             var bytes: [UInt8] = []
-            for _ in 0..<rng.int(64) {
+            for _ in 0 ..< rng.int(64) {
                 bytes += Array(String(Unicode.Scalar(pool[rng.int(pool.count)]) ?? " ").utf8)
             }
             if rng.int(2) == 0, !bytes.isEmpty {
-                for _ in 0...rng.int(3) { bytes[rng.int(bytes.count)] = UInt8(rng.int(256)) }
+                for _ in 0 ... rng.int(3) { bytes[rng.int(bytes.count)] = UInt8(rng.int(256)) }
             }
             if UTF8Validation.firstInvalidByte(bytes) != UTF8Validation.firstInvalidByteScalar(bytes) {
                 mismatches += 1

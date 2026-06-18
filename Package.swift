@@ -7,9 +7,11 @@ import PackageDescription
 // `.package(url:from:)` requirement. Aligned with the sibling ADJSON / ADSQL / URLBuilder packages.
 let strictSettings: [SwiftSetting] = [
     .swiftLanguageMode(.v6),
+    .treatAllWarnings(as: .error),
     .enableUpcomingFeature("ExistentialAny"),
+    .enableUpcomingFeature("InferIsolatedConformances"),
     .enableUpcomingFeature("InternalImportsByDefault"),
-    .enableUpcomingFeature("MemberImportVisibility"),
+    .enableUpcomingFeature("MemberImportVisibility")
 ]
 
 // The byte/IO kernel additionally adopts SE-0458 strict memory safety: every unsafe construct must
@@ -27,7 +29,7 @@ let kernelSettings: [SwiftSetting] =
 let timingWarningFlags: [SwiftSetting] = [
     .unsafeFlags([
         "-Xfrontend", "-warn-long-function-bodies=100",
-        "-Xfrontend", "-warn-long-expression-type-checking=100",
+        "-Xfrontend", "-warn-long-expression-type-checking=100"
     ])
 ]
 
@@ -36,9 +38,8 @@ let testSettings: [SwiftSetting] =
     strictSettings + timingWarningFlags + [.unsafeFlags(["-enable-actor-data-race-checks"])]
 
 // Dev-only tooling is gated behind `ADF_DEV` so packages that depend on ADFoundation never resolve
-// it. The `format` / `lint` command plugins carry no external dependencies, so they are always
-// available without the flag; build-time lint enforcement (the `LintBuild` plugin) attaches to the
-// libraries only in dev/CI.
+// it. The `format` / `lint` / `LintBuild` plugins now come from the shared ADBuildTools dev
+// dependency, so they are available only with the flag set (CI and the git hooks set it).
 let isDev = Context.environment["ADF_DEV"] != nil
 
 var packageDependencies: [Package.Dependency] = [
@@ -50,6 +51,15 @@ var packageDependencies: [Package.Dependency] = [
     .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "603.0.0")
 ]
 if isDev {
+    // Shared lint/format tooling (Format/Lint/LintBuild plugins + canonical `.swift-format`). Dev-only,
+    // so packages that depend on ADFoundation never resolve it. Resolves from a local checkout via
+    // `ADBUILDTOOLS_PATH`, otherwise from the published `main` branch.
+    if let path = Context.environment["ADBUILDTOOLS_PATH"], !path.isEmpty {
+        packageDependencies.append(.package(path: path))
+    } else {
+        packageDependencies.append(
+            .package(url: "https://github.com/g-cqd/ADBuildTools.git", branch: "main"))
+    }
     packageDependencies.append(
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.0.0"))
     // ordo-one's statistically-rigorous benchmark framework (p-percentile latencies + throughput),
@@ -62,7 +72,8 @@ if isDev {
 
 // Build-time formatting enforcement attaches to the libraries only in dev/CI. A build-tool plugin on
 // a library target would otherwise run for everyone who depends on ADFoundation, so it stays gated.
-let libraryBuildPlugins: [Target.PluginUsage] = isDev ? ["LintBuild"] : []
+let libraryBuildPlugins: [Target.PluginUsage] =
+    isDev ? [.plugin(name: "LintBuild", package: "ADBuildTools")] : []
 
 let package = Package(
     name: "ADFoundation",
@@ -76,7 +87,7 @@ let package = Package(
         .iOS(.v18),
         .tvOS(.v18),
         .watchOS(.v11),
-        .visionOS(.v2),
+        .visionOS(.v2)
     ],
     products: [
         // Umbrella: re-exports the always-available core tiers for `import ADFoundation`.
@@ -91,9 +102,13 @@ let package = Package(
         .library(name: "ADFText", targets: ["ADFText"]),
         // POSIX file channel + read-only memory mapping + cross-process atomics. Stdlib + libc only.
         .library(name: "ADFIO", targets: ["ADFIO"]),
+        // Process self-metrics: CPU time, resident/footprint memory, peak RSS, and (Apple Silicon)
+        // retired instructions / cycles. Stdlib + libc/Mach only — the building block for measuring
+        // the CPU and memory cost of a method, a phase, or a whole run.
+        .library(name: "ADFMetrics", targets: ["ADFMetrics"]),
         // Shared swift-syntax helpers for macro compiler plugins (diagnostics, Swift source-literal
         // escaping, identifier backticking). The one tier that links swift-syntax.
-        .library(name: "ADFMacroSupport", targets: ["ADFMacroSupport"]),
+        .library(name: "ADFMacroSupport", targets: ["ADFMacroSupport"])
     ],
     dependencies: packageDependencies,
     targets: [
@@ -112,6 +127,10 @@ let package = Package(
         .target(
             name: "ADFIO", dependencies: ["ADFCore"], swiftSettings: kernelSettings,
             plugins: libraryBuildPlugins),
+        // ADFMetrics — process self-metrics over libc/Mach (getrusage, task_info, clock_gettime,
+        // proc_pid_rusage). A thin syscall façade, not the byte kernel, so it takes the standard
+        // strict settings rather than the SE-0458 memory-safety kernel settings; no package dependency.
+        .target(name: "ADFMetrics", swiftSettings: strictSettings, plugins: libraryBuildPlugins),
         // ADFoundation — umbrella re-export of every zero-dependency runtime tier (ADFMacroSupport is
         // excluded: it links swift-syntax and is imported directly by macro plugins).
         .target(
@@ -125,7 +144,7 @@ let package = Package(
             name: "ADFMacroSupport",
             dependencies: [
                 .product(name: "SwiftSyntax", package: "swift-syntax"),
-                .product(name: "SwiftDiagnostics", package: "swift-syntax"),
+                .product(name: "SwiftDiagnostics", package: "swift-syntax")
             ],
             swiftSettings: strictSettings,
             plugins: libraryBuildPlugins),
@@ -134,21 +153,12 @@ let package = Package(
         .testTarget(name: "ADFUnicodeTests", dependencies: ["ADFUnicode"], swiftSettings: testSettings),
         .testTarget(name: "ADFTextTests", dependencies: ["ADFText"], swiftSettings: testSettings),
         .testTarget(name: "ADFIOTests", dependencies: ["ADFIO"], swiftSettings: testSettings),
+        .testTarget(name: "ADFMetricsTests", dependencies: ["ADFMetrics"], swiftSettings: testSettings),
         .testTarget(
-            name: "ADFMacroSupportTests", dependencies: ["ADFMacroSupport"], swiftSettings: testSettings),
+            name: "ADFMacroSupportTests", dependencies: ["ADFMacroSupport"], swiftSettings: testSettings)
 
-        // Developer tooling. The command plugins are dependency-free (they drive the toolchain's
-        // bundled `swift format`), so they impose nothing on packages that depend on ADFoundation.
-        .plugin(
-            name: "Format",
-            capability: .command(
-                intent: .custom(verb: "format", description: "Format Swift sources with swift-format"),
-                permissions: [.writeToPackageDirectory(reason: "Format Swift sources with swift-format")])),
-        .plugin(
-            name: "Lint",
-            capability: .command(
-                intent: .custom(verb: "lint", description: "Check formatting and shipped-library discipline"))),
-        .plugin(name: "LintBuild", capability: .buildTool()),
+        // Format / lint / LintBuild plugins now come from the shared ADBuildTools dev dependency, so the
+        // lint logic lives in exactly one place (see `libraryBuildPlugins` above for the build-tool usage).
     ]
 )
 
@@ -161,7 +171,7 @@ if isDev {
             name: "ADFoundationSuite",
             dependencies: [
                 "ADFCore", "ADFText",
-                .product(name: "Benchmark", package: "benchmark"),
+                .product(name: "Benchmark", package: "benchmark")
             ],
             path: "Benchmarks/ADFoundationSuite",
             swiftSettings: strictSettings,

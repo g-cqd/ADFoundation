@@ -7,10 +7,10 @@ public enum Hex {
     @inlinable
     public static func value(_ b: UInt8) -> UInt8? {
         switch b {
-        case 0x30...0x39: return b - 0x30
-        case 0x61...0x66: return b - 0x61 + 10
-        case 0x41...0x46: return b - 0x41 + 10
-        default: return nil
+            case 0x30 ... 0x39: return b - 0x30
+            case 0x61 ... 0x66: return b - 0x61 + 10
+            case 0x41 ... 0x46: return b - 0x41 + 10
+            default: return nil
         }
     }
 

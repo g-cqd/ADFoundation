@@ -84,7 +84,7 @@ private func makeTempPath() -> String {
         let logicalCount = 1100
         var payload: [UInt8] = []
         var empties: [Bool] = []
-        for i in 0..<logicalCount {
+        for i in 0 ..< logicalCount {
             let isEmpty = i % 7 == 0
             empties.append(isEmpty)
             if !isEmpty { payload.append(UInt8(i & 0xFF)) }
@@ -97,7 +97,7 @@ private func makeTempPath() -> String {
                 if isEmpty {
                     views.append(UnsafeRawBufferPointer(start: nil, count: 0))
                 } else {
-                    views.append(UnsafeRawBufferPointer(rebasing: raw[cursor..<(cursor + 1)]))
+                    views.append(UnsafeRawBufferPointer(rebasing: raw[cursor ..< (cursor + 1)]))
                     cursor += 1
                 }
             }
@@ -157,7 +157,7 @@ private func makeTempPath() -> String {
             file.close()
             _ = path.withCString { unlink($0) }
         }
-        let payload = [UInt8](0..<64)
+        let payload = [UInt8](0 ..< 64)
         try payload.withUnsafeBytes { try file.pwrite($0, at: 0) }
         try file.sync(.barrier)
 
@@ -175,7 +175,7 @@ private func makeTempPath() -> String {
             file.close()
             _ = path.withCString { unlink($0) }
         }
-        let payload = [UInt8](0..<32)
+        let payload = [UInt8](0 ..< 32)
         try payload.withUnsafeBytes { try file.pwrite($0, at: 0) }
         try file.sync(.barrier)
 

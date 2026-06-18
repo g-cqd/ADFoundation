@@ -18,29 +18,29 @@ public enum ASCII {
     @inlinable
     public static func isSubDelimiter(_ b: UInt8) -> Bool {
         switch b {
-        case UInt8(ascii: "!"), UInt8(ascii: "$"), UInt8(ascii: "&"), UInt8(ascii: "'"),
-            UInt8(ascii: "("), UInt8(ascii: ")"), UInt8(ascii: "*"), UInt8(ascii: "+"),
-            UInt8(ascii: ","), UInt8(ascii: ";"), UInt8(ascii: "="):
-            return true
-        default:
-            return false
+            case UInt8(ascii: "!"), UInt8(ascii: "$"), UInt8(ascii: "&"), UInt8(ascii: "'"),
+                UInt8(ascii: "("), UInt8(ascii: ")"), UInt8(ascii: "*"), UInt8(ascii: "+"),
+                UInt8(ascii: ","), UInt8(ascii: ";"), UInt8(ascii: "="):
+                return true
+            default:
+                return false
         }
     }
 }
 
 extension Character {
     @inlinable public var isASCIIAlpha: Bool {
-        ("a"..."z").contains(self) || ("A"..."Z").contains(self)
+        ("a" ... "z").contains(self) || ("A" ... "Z").contains(self)
     }
-    @inlinable public var isASCIIDigit: Bool { ("0"..."9").contains(self) }
+    @inlinable public var isASCIIDigit: Bool { ("0" ... "9").contains(self) }
     @inlinable public var isASCIIAlphanumeric: Bool { isASCIIAlpha || isASCIIDigit }
     @inlinable public var isASCIIHexDigit: Bool {
-        isASCIIDigit || ("a"..."f").contains(self) || ("A"..."F").contains(self)
+        isASCIIDigit || ("a" ... "f").contains(self) || ("A" ... "F").contains(self)
     }
     @inlinable public var isSubDelimiter: Bool {
         switch self {
-        case "!", "$", "&", "'", "(", ")", "*", "+", ",", ";", "=": true
-        default: false
+            case "!", "$", "&", "'", "(", ")", "*", "+", ",", ";", "=": true
+            default: false
         }
     }
 }

@@ -2,6 +2,7 @@ public import SwiftDiagnostics
 public import SwiftSyntax
 
 /// A plain ``DiagnosticMessage`` carrying a message, a domain-scoped id, and a severity.
+///
 /// Macro compiler plugins share this instead of each re-declaring an equivalent type.
 public struct SimpleDiagnostic: DiagnosticMessage {
     public let message: String

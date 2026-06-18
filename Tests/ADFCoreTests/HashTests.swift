@@ -21,7 +21,7 @@ struct XXH64Tests {
     @Test func rawBufferAndArrayAgreeAcrossLanes() {
         // Exercises the >=32B main loop, the 8B and 4B tails, and the single-byte tail.
         for count in [0, 1, 4, 7, 8, 15, 31, 32, 33, 200] {
-            let data = (0..<count).map { UInt8($0 & 0xFF) }
+            let data = (0 ..< count).map { UInt8($0 & 0xFF) }
             let viaArray = XXH64.hash(data, seed: 0x1234)
             let viaRaw = data.withUnsafeBytes { XXH64.hash($0, seed: 0x1234) }
             #expect(viaArray == viaRaw)

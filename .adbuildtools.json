@@ -1,0 +1,11 @@
+{
+    "devEnv": "ADF_DEV",
+    "shippedTargets": [
+        "Sources/ADFCore",
+        "Sources/ADFUnicode",
+        "Sources/ADFText",
+        "Sources/ADFIO",
+        "Sources/ADFoundation"
+    ],
+    "strtodBan": true
+}

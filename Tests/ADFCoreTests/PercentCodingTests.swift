@@ -34,7 +34,7 @@ struct PercentCodingTests {
     }
 
     @Test func roundTripsEveryByteValue() {
-        let all = (0...255).map { UInt8($0) }
+        let all = (0 ... 255).map { UInt8($0) }
         #expect(PercentCoding.decode(PercentCoding.encode(all)) == all)
     }
 

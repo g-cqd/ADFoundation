@@ -9,11 +9,13 @@ public let swiftKeywords: Set<String> = [
     "func", "guard", "if", "import", "in", "init", "inout", "internal", "is", "let", "nil",
     "operator", "private", "protocol", "public", "repeat", "rethrows", "return", "self",
     "static", "struct", "subscript", "super", "switch", "throw", "throws", "true", "try",
-    "typealias", "var", "where", "while", "Any", "Self",
+    "typealias", "var", "where", "while", "Any", "Self"
 ]
 
 /// Backtick-escapes `name` when it collides with a Swift reserved word, so emitted source such as
-/// `let ` + "`default`" + ` = …` compiles. Non-keyword names pass through unchanged.
+/// `let ` + "`default`" + ` = …` compiles.
+///
+/// Non-keyword names pass through unchanged.
 public func escapedIdentifier(_ name: String) -> String {
     swiftKeywords.contains(name) ? "`\(name)`" : name
 }
@@ -33,21 +35,21 @@ public func swiftStringLiteral(_ value: String) -> String {
     var out = "\""
     for scalar in value.unicodeScalars {
         switch scalar {
-        case "\\": out += #"\\"#
-        case "\"": out += #"\""#
-        case "\n": out += #"\n"#
-        case "\r": out += #"\r"#
-        case "\t": out += #"\t"#
-        case "\u{0}": out += #"\0"#
-        default:
-            if scalar.value < 0x20 {
-                out += "\\u{"
-                out.append(hexDigit(scalar.value >> 4))
-                out.append(hexDigit(scalar.value & 0xF))
-                out += "}"
-            } else {
-                out.unicodeScalars.append(scalar)
-            }
+            case "\\": out += #"\\"#
+            case "\"": out += #"\""#
+            case "\n": out += #"\n"#
+            case "\r": out += #"\r"#
+            case "\t": out += #"\t"#
+            case "\u{0}": out += #"\0"#
+            default:
+                if scalar.value < 0x20 {
+                    out += "\\u{"
+                    out.append(hexDigit(scalar.value >> 4))
+                    out.append(hexDigit(scalar.value & 0xF))
+                    out += "}"
+                } else {
+                    out.unicodeScalars.append(scalar)
+                }
         }
     }
     return out + "\""

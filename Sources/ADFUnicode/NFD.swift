@@ -56,10 +56,7 @@ public enum NFD {
     /// any directly preceding higher-ccc scalars (equal classes keep order).
     static func canonicalReorder(_ scalars: inout [Unicode.Scalar]) {
         guard scalars.count > 1 else { return }
-        for i in 1..<scalars.count {
-            // Every nonzero-ccc scalar is ≥ U+0300 — skip the (comparatively
-            // costly) stdlib property lookup for ASCII/Latin-1.
-            guard scalars[i].value >= 0x300 else { continue }
+        for i in 1 ..< scalars.count where scalars[i].value >= 0x300 {
             let ccc = combiningClass(scalars[i])
             guard ccc > 0 else { continue }
             var j = i

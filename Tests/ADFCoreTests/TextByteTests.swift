@@ -22,7 +22,7 @@ struct HexTests {
     }
 
     @Test func roundTrip() {
-        for v: UInt8 in 0...15 { #expect(Hex.value(Hex.digit(v)) == v) }
+        for v: UInt8 in 0 ... 15 { #expect(Hex.value(Hex.digit(v)) == v) }
     }
 }
 

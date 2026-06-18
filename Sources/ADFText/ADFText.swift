@@ -69,12 +69,12 @@ public enum ADFText {
         return withUnsafeTemporaryAllocation(of: Int.self, capacity: 2 * (n + 1)) { scratch in
             var prev = 0
             var cur = n + 1
-            for j in 0...n { scratch[j] = j }
-            for i in 1...m {
+            for j in 0 ... n { scratch[j] = j }
+            for i in 1 ... m {
                 scratch[cur] = i
                 var rowMin = i
                 let ai = rows[i - 1]
-                for j in 1...n {
+                for j in 1 ... n {
                     let value: Int
                     if ai == cols[j - 1] {
                         value = scratch[prev + j - 1]
@@ -131,14 +131,14 @@ public enum ADFText {
         return withUnsafeTemporaryAllocation(of: Int.self, capacity: 2 * (n + 1)) { scratch in
             var prev = 0
             var cur = n + 1
-            for idx in 0..<(2 * (n + 1)) { scratch[idx] = inf }
-            for j in 0...Swift.min(k, n) { scratch[j] = j }  // prev region seed (prev == 0)
-            for i in 1...m {
+            for idx in 0 ..< (2 * (n + 1)) { scratch[idx] = inf }
+            for j in 0 ... Swift.min(k, n) { scratch[j] = j }  // prev region seed (prev == 0)
+            for i in 1 ... m {
                 let lo = Swift.max(0, i - k)
                 let hi = Swift.min(n, i + k)
                 if lo > 0 { scratch[cur + lo - 1] = inf }  // left boundary read by current[j-1] at j == lo
                 var rowMin = inf
-                for j in lo...hi {
+                for j in lo ... hi {
                     let value: Int
                     if j == 0 {
                         value = i  // reached only while i ≤ k (lo == 0)

@@ -26,12 +26,12 @@ struct NFDTests {
     @Test func canonicalReorderingByCombiningClass() {
         // a + acute (ccc 230) + dot-below (ccc 220) must reorder so the lower class comes first.
         let unordered: [Unicode.Scalar] = [
-            Unicode.Scalar(0x61)!, Unicode.Scalar(0x301)!, Unicode.Scalar(0x323)!,
+            Unicode.Scalar(0x61)!, Unicode.Scalar(0x301)!, Unicode.Scalar(0x323)!
         ]
         #expect(values(NFD.decompose(unordered)) == [0x61, 0x323, 0x301])
         // Already-canonical order is preserved (stability of equal/ascending classes).
         let ordered: [Unicode.Scalar] = [
-            Unicode.Scalar(0x61)!, Unicode.Scalar(0x323)!, Unicode.Scalar(0x301)!,
+            Unicode.Scalar(0x61)!, Unicode.Scalar(0x323)!, Unicode.Scalar(0x301)!
         ]
         #expect(values(NFD.decompose(ordered)) == [0x61, 0x323, 0x301])
     }

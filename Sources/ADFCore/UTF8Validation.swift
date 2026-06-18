@@ -40,7 +40,7 @@ public enum UTF8Validation {
             return nil  // continuation byte or invalid lead (0xF8+)
         }
         guard j + length <= n else { return nil }
-        for k in 1..<length {
+        for k in 1 ..< length {
             let cont = unsafe p[j + k]
             guard cont & 0xC0 == 0x80 else { return nil }
             scalar = (scalar << 6) | UInt32(cont & 0x3F)

@@ -4,7 +4,7 @@ import Testing
 @Suite("ByteReader")
 struct ByteReaderTests {
     @Test func readsLittleEndianScalarsThenSignalsEnd() {
-        var bytes = [UInt8]()
+        var bytes: [UInt8] = []
         bytes.append(contentsOf: withUnsafeBytes(of: UInt32(0xDEAD_BEEF).littleEndian) { Array($0) })
         bytes.append(contentsOf: withUnsafeBytes(of: UInt64(0x0102_0304_0506_0708).littleEndian) { Array($0) })
         bytes.append(contentsOf: withUnsafeBytes(of: Double(3.5).bitPattern.littleEndian) { Array($0) })
@@ -161,7 +161,7 @@ struct ByteBufferPoolTests {
 
     @Test func respectsMaxPooledCount() {
         let pool = ByteBufferPool(maxPooled: 2)
-        for _ in 0..<5 {
+        for _ in 0 ..< 5 {
             var b: [UInt8] = []
             b.reserveCapacity(64)
             pool.recycle(b)
@@ -177,10 +177,10 @@ struct ByteBufferPoolTests {
     @Test func concurrentTakeAndRecycleIsThreadSafe() async {
         let pool = ByteBufferPool(maxBufferCapacity: 1 << 16, maxPooled: 16)
         let total = await withTaskGroup(of: Int.self) { group in
-            for _ in 0..<8 {
+            for _ in 0 ..< 8 {
                 group.addTask {
                     var sum = 0
-                    for _ in 0..<5000 {
+                    for _ in 0 ..< 5000 {
                         var b = pool.take()
                         b.append(contentsOf: [1, 2, 3, 4])
                         sum += b.count

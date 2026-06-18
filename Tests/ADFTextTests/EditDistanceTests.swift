@@ -46,7 +46,7 @@ struct EditDistanceTests {
         let alphabet: [UInt8] = [97, 98, 99]
         var corpus: [[UInt8]] = [[]]
         var frontier: [[UInt8]] = [[]]
-        for _ in 0..<3 {
+        for _ in 0 ..< 3 {
             var next: [[UInt8]] = []
             for s in frontier { for c in alphabet { next.append(s + [c]) } }
             corpus += next
@@ -56,7 +56,7 @@ struct EditDistanceTests {
         for a in corpus {
             for b in corpus {
                 let full = ADFText.editDistanceFull(a, b)
-                for k in 0...4 {
+                for k in 0 ... 4 {
                     let expected = full <= k ? full : k + 1
                     let banded = ADFText.editDistanceBanded(a, b, maxDistance: k)
                     if banded != expected {
@@ -75,11 +75,11 @@ struct EditDistanceTests {
     @Test func bandedMatchesFullOnLongInputs() {
         var rng = LCG(seed: 0x9E37_79B9_7F4A_7C15)
         var failures = 0
-        for _ in 0..<400 {
+        for _ in 0 ..< 400 {
             let length = 16 + rng.int(96)  // 16…111, straddles the bandedMinRowWidth threshold
-            let a = (0..<length).map { _ in UInt8(97 + rng.int(5)) }
+            let a = (0 ..< length).map { _ in UInt8(97 + rng.int(5)) }
             var b = a
-            for _ in 0..<rng.int(10) where !b.isEmpty { b[rng.int(b.count)] = UInt8(97 + rng.int(5)) }
+            for _ in 0 ..< rng.int(10) where !b.isEmpty { b[rng.int(b.count)] = UInt8(97 + rng.int(5)) }
             for k in [0, 1, 2, 3, 5, 10, 50] {
                 let full = ADFText.editDistanceFull(a, b)
                 let expected = full <= k ? full : k + 1
@@ -94,9 +94,9 @@ struct EditDistanceTests {
     /// unbounded and the bounded contract.
     @Test func isSymmetric() {
         var rng = LCG(seed: 0xABCD_1234_5678_9F01)
-        for _ in 0..<500 {
-            let a = (0..<rng.int(40)).map { _ in UInt8(97 + rng.int(4)) }
-            let b = (0..<rng.int(40)).map { _ in UInt8(97 + rng.int(4)) }
+        for _ in 0 ..< 500 {
+            let a = (0 ..< rng.int(40)).map { _ in UInt8(97 + rng.int(4)) }
+            let b = (0 ..< rng.int(40)).map { _ in UInt8(97 + rng.int(4)) }
             #expect(ADFText.editDistance(a, b) == ADFText.editDistance(b, a))
             for k in [0, 1, 3, 10] {
                 #expect(
@@ -118,7 +118,7 @@ struct EditDistanceTests {
     /// The pure functions are safe to fan out concurrently (no shared state).
     @Test func concurrentCallsAgree() async {
         let pairs: [(String, String)] = [
-            ("kitten", "sitting"), ("flaw", "lawn"), ("foundation", "fundamentals"), ("", "abc"),
+            ("kitten", "sitting"), ("flaw", "lawn"), ("foundation", "fundamentals"), ("", "abc")
         ]
         let serial = pairs.map { dist($0.0, $0.1) }
         let parallel = await withTaskGroup(of: (Int, Int).self) { group in

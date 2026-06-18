@@ -26,11 +26,11 @@ public final class PosixFile: @unchecked Sendable {
     public init(path: String, mode: Mode) throws(IOError) {
         var flags: Int32
         switch mode {
-        case .readOnly:
-            flags = O_RDONLY | O_CLOEXEC
-        case .readWrite(let create):
-            flags = O_RDWR | O_CLOEXEC
-            if create { flags |= O_CREAT }
+            case .readOnly:
+                flags = O_RDONLY | O_CLOEXEC
+            case .readWrite(let create):
+                flags = O_RDWR | O_CLOEXEC
+                if create { flags |= O_CREAT }
         }
         let fd = unsafe path.withCString { unsafe open($0, flags, 0o644) }
         guard fd >= 0 else { throw ioErrno("open(\(path))") }
@@ -108,13 +108,13 @@ public final class PosixFile: @unchecked Sendable {
         #endif
         while unsafe index < buffers.count {
             let count = unsafe min(buffers.count - index, iovCap)
-            let batch = unsafe buffers[index..<(index + count)]
+            let batch = unsafe buffers[index ..< (index + count)]
             let total = unsafe batch.reduce(0) { $0 + $1.count }
             // Build the iovec batch in scratch storage (stack for typical fan-out, heap for large)
             // instead of allocating a fresh `[iovec]` per batch. `iovec` is trivial, so the temporary
             // needs no explicit deinitialization.
             let n = unsafe withUnsafeTemporaryAllocation(of: iovec.self, capacity: count) { iov -> Int in
-                for k in 0..<count {
+                for k in 0 ..< count {
                     let buf = unsafe buffers[index + k]
                     unsafe iov.initializeElement(
                         at: k,
@@ -136,7 +136,7 @@ public final class PosixFile: @unchecked Sendable {
                 // Partial vectored write: finish the remainder element-wise.
                 var skip = n
                 var resumeAt = at + n
-                for j in index..<(index + count) {
+                for j in index ..< (index + count) {
                     let buf = unsafe buffers[j]
                     if skip >= buf.count {
                         skip -= buf.count
@@ -155,32 +155,32 @@ public final class PosixFile: @unchecked Sendable {
 
     public func sync(_ profile: DurabilityProfile) throws(IOError) {
         switch profile {
-        case .none:
-            return
-        case .barrier:
-            #if canImport(Darwin)
-                if fcntl(fileDescriptor, F_BARRIERFSYNC) == -1 {
-                    guard fsync(fileDescriptor) == 0 else { throw ioErrno("fsync(barrier fallback)") }
-                }
-            #else
-                // Linux has no `F_BARRIERFSYNC`. `fdatasync` is the closest analogue:
-                // it forces the data (and the size metadata needed to read it back)
-                // to the storage stack, which is the ordering guarantee the barrier
-                // profile relies on. It does not issue a device cache flush — that is
-                // exactly the barrier/full distinction Darwin draws.
-                guard fdatasync(fileDescriptor) == 0 else { throw ioErrno("fdatasync(barrier)") }
-            #endif
-        case .full:
-            #if canImport(Darwin)
-                if fcntl(fileDescriptor, F_FULLFSYNC) == -1 {
-                    guard fsync(fileDescriptor) == 0 else { throw ioErrno("fsync(full fallback)") }
-                }
-            #else
-                // `F_FULLFSYNC` asks the drive to flush its cache; Linux exposes no
-                // portable userspace equivalent, so `fsync` is the strongest portable
-                // guarantee (already the Darwin fallback when `F_FULLFSYNC` is refused).
-                guard fsync(fileDescriptor) == 0 else { throw ioErrno("fsync(full)") }
-            #endif
+            case .none:
+                return
+            case .barrier:
+                #if canImport(Darwin)
+                    if fcntl(fileDescriptor, F_BARRIERFSYNC) == -1 {
+                        guard fsync(fileDescriptor) == 0 else { throw ioErrno("fsync(barrier fallback)") }
+                    }
+                #else
+                    // Linux has no `F_BARRIERFSYNC`. `fdatasync` is the closest analogue:
+                    // it forces the data (and the size metadata needed to read it back)
+                    // to the storage stack, which is the ordering guarantee the barrier
+                    // profile relies on. It does not issue a device cache flush — that is
+                    // exactly the barrier/full distinction Darwin draws.
+                    guard fdatasync(fileDescriptor) == 0 else { throw ioErrno("fdatasync(barrier)") }
+                #endif
+            case .full:
+                #if canImport(Darwin)
+                    if fcntl(fileDescriptor, F_FULLFSYNC) == -1 {
+                        guard fsync(fileDescriptor) == 0 else { throw ioErrno("fsync(full fallback)") }
+                    }
+                #else
+                    // `F_FULLFSYNC` asks the drive to flush its cache; Linux exposes no
+                    // portable userspace equivalent, so `fsync` is the strongest portable
+                    // guarantee (already the Darwin fallback when `F_FULLFSYNC` is refused).
+                    guard fsync(fileDescriptor) == 0 else { throw ioErrno("fsync(full)") }
+                #endif
         }
     }
 

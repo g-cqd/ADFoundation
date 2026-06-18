@@ -18,7 +18,7 @@ extension ADFText {
         var start = collection.startIndex
         var result: [Range<C.Index>] = []
         while true {
-            result.append(start..<windowEnd)
+            result.append(start ..< windowEnd)
             if windowEnd == collection.endIndex { break }
             start = collection.index(after: start)
             windowEnd = collection.index(after: windowEnd)
@@ -39,14 +39,14 @@ extension ADFText {
         while index != collection.endIndex {
             if isSeparator(collection[index]) {
                 if !omittingEmptySubsequences || tokenStart != index {
-                    result.append(tokenStart..<index)
+                    result.append(tokenStart ..< index)
                 }
                 tokenStart = collection.index(after: index)
             }
             index = collection.index(after: index)
         }
         if !omittingEmptySubsequences || tokenStart != index {
-            result.append(tokenStart..<index)
+            result.append(tokenStart ..< index)
         }
         return result
     }

@@ -80,4 +80,36 @@ nonisolated(unsafe) let benchmarks = {
             for _ in bm.scaledIterations { blackHole(UTF8Validation.firstInvalidByte(mixed) ?? -1) }
         }
     }
+
+    // MARK: copy-on-write / allocation guards. These track `.mallocCountTotal` (collected in CI,
+    // where jemalloc is installed) so a reintroduced copy-on-write copy or per-append reallocation in
+    // the byte-building primitives fails the threshold instead of silently rotting. They cover the
+    // OutputSpan / single-allocation adoption in `PercentCoding` and `Varint`.
+    let cowMetrics = Benchmark.Configuration(metrics: [.wallClock, .throughput, .mallocCountTotal])
+
+    let escapeHeavy = PercentCoding.encode(mixedBytes(256))  // mostly %XX triples
+    Benchmark("cow/percent-decode escape-heavy 256", configuration: cowMetrics) { bm in
+        for _ in bm.scaledIterations { blackHole(PercentCoding.decode(escapeHeavy)) }
+    }
+
+    // Build a run of varints two ways: the reserve+append array form vs. the exclusively-owned
+    // OutputSpan form. Both should allocate exactly once; the benchmark guards that invariant.
+    let varintValues: [UInt64] = (0..<256).map { UInt64($0) &* 2_654_435_761 }
+    let varintCapacity = varintValues.count * Varint.maxEncodedLength
+    Benchmark("cow/varint-build array", configuration: cowMetrics) { bm in
+        for _ in bm.scaledIterations {
+            var out: [UInt8] = []
+            out.reserveCapacity(varintCapacity)
+            for v in varintValues { Varint.append(v, to: &out) }
+            blackHole(out.count)
+        }
+    }
+    Benchmark("cow/varint-build outputspan", configuration: cowMetrics) { bm in
+        for _ in bm.scaledIterations {
+            let out = [UInt8](capacity: varintCapacity) { span in
+                for v in varintValues { Varint.append(v, to: &span) }
+            }
+            blackHole(out.count)
+        }
+    }
 }

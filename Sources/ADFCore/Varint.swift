@@ -30,6 +30,10 @@ public enum Varint {
 
     /// Reads a varint from a raw buffer, advancing `offset`. Returns `nil` on truncation or on a
     /// value that would overflow 64 bits — never traps (the no-trap-at-boundaries rule).
+    ///
+    /// On every outcome `offset` advances past the bytes consumed (it lands at `bytes.count` on
+    /// truncation, and just past the offending byte on overflow), so a caller looping over a buffer
+    /// always makes progress and cannot spin on a malformed varint.
     public static func read(_ bytes: UnsafeRawBufferPointer, _ offset: inout Int) -> UInt64? {
         var result: UInt64 = 0
         var shift: UInt64 = 0

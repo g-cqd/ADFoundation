@@ -6,6 +6,9 @@
 public enum ByteCompare {
     @inlinable
     public static func equal(_ a: UnsafePointer<UInt8>, _ b: UnsafePointer<UInt8>, _ count: Int) -> Bool {
+        // Owner/bounds: caller owns `a[0 ..< count]` and `b[0 ..< count]` for this call; both pointers
+        // are read-only and never escape. The word + remainder loops never read past `count`.
+        assert(count >= 0, "ByteCompare.equal requires a non-negative count")
         var i = 0
         while i &+ 8 <= count {
             let wa = unsafe UnsafeRawPointer(a + i).loadUnaligned(as: UInt64.self)

@@ -20,6 +20,10 @@ public enum UTF8Validation {
     /// truncated, overlong, a surrogate, or out of range.
     @inlinable
     public static func sequenceLength(_ p: UnsafePointer<UInt8>, _ j: Int, _ n: Int) -> Int? {
+        // Owner/bounds: caller owns `p[0 ..< n]`; `j` indexes the lead byte and must satisfy
+        // `0 <= j < n` (callers scan with `while i < n`). The continuation reads below are guarded by
+        // `j + length <= n`. `p` is read-only and never escapes.
+        assert(j >= 0 && j < n, "sequenceLength reads p[j]; j must be in 0..<n")
         let b = unsafe p[j]
         let length: Int
         let lowerBound: UInt32

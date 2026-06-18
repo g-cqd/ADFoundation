@@ -1,6 +1,10 @@
 /// LEB128 variable-length integers and zig-zag signed mapping — the compact integer codec shared
 /// by free lists, record codecs, and posting lists. Relocated from ADSQL's `ByteCodec`.
 public enum Varint {
+    /// The maximum number of bytes an unsigned LEB128 varint can occupy (`ceil(64 / 7) == 10`). A
+    /// caller building into a fixed-capacity `OutputSpan` reserves this per varint as a safe bound.
+    public static let maxEncodedLength = 10
+
     /// Appends `value` as an unsigned LEB128 varint (7 bits per byte, high bit = continuation).
     public static func append(_ value: UInt64, to bytes: inout [UInt8]) {
         var v = value
@@ -9,6 +13,19 @@ public enum Varint {
             v >>= 7
         }
         bytes.append(UInt8(v))
+    }
+
+    /// Appends `value` as an unsigned LEB128 varint into an `OutputSpan` — the copy-free building form
+    /// of the `[UInt8]` overload, for codecs that assemble a record into a single exclusively-owned
+    /// buffer (no reference counting, no copy-on-write). The caller must leave at least
+    /// ``maxEncodedLength`` free elements; the span's fixed capacity is its bound.
+    public static func append(_ value: UInt64, to out: inout OutputSpan<UInt8>) {
+        var v = value
+        while v >= 0x80 {
+            out.append(UInt8(v & 0x7F) | 0x80)
+            v >>= 7
+        }
+        out.append(UInt8(v))
     }
 
     /// Reads a varint from a raw buffer, advancing `offset`. Returns `nil` on truncation or on a

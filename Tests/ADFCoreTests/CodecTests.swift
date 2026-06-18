@@ -48,6 +48,22 @@ struct VarintTests {
             #expect(Varint.unzigzag(Varint.zigzag(v)) == v)
         }
     }
+
+    @Test func outputSpanFormMatchesArrayForm() {
+        for v in [UInt64(0), 1, 127, 128, 300, 16384, 1 << 35, UInt64.max] {
+            var viaArray: [UInt8] = []
+            Varint.append(v, to: &viaArray)
+            // Build the same varint into an exclusively-owned OutputSpan sized to the worst case.
+            let viaSpan = [UInt8](capacity: Varint.maxEncodedLength) { out in
+                Varint.append(v, to: &out)
+            }
+            #expect(viaSpan == viaArray)
+            #expect(viaArray.count <= Varint.maxEncodedLength)
+            var offset = 0
+            #expect(Varint.read(viaSpan, &offset) == v)
+            #expect(offset == viaSpan.count)
+        }
+    }
 }
 
 @Suite("Endian")

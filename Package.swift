@@ -15,7 +15,11 @@ let strictSettings: [SwiftSetting] = [
 // The byte/IO kernel additionally adopts SE-0458 strict memory safety: every unsafe construct must
 // be explicitly `unsafe`-annotated, so any new unsafe use is compiler-flagged. Matches ADSQL's
 // `ADDBCore` kernel. Applied to the targets that hold pointer / POSIX code (ADFCore, ADFIO).
-let kernelSettings: [SwiftSetting] = strictSettings + [.strictMemorySafety()]
+// `Lifetimes` (experimental, compile-time only — no runtime-floor impact) lets the kernel return
+// `~Escapable` `Span`/`RawSpan` views whose lifetime the compiler proves can't dangle, replacing
+// doc-only raw-pointer contracts. Matches the ADDB/ADSQL kernels.
+let kernelSettings: [SwiftSetting] =
+    strictSettings + [.strictMemorySafety(), .enableExperimentalFeature("Lifetimes")]
 
 // Compile-time type-check timing warnings (flag slow expressions / function bodies). These use
 // unsafe flags, which would block version-based dependency resolution if placed on a shipped

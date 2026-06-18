@@ -45,19 +45,27 @@ public enum PercentCoding {
     /// `application/x-www-form-urlencoded` rule, which a caller layers on top if it wants it.
     @inlinable
     public static func decode(_ bytes: some Collection<UInt8>) -> [UInt8]? {
-        var out: [UInt8] = []
-        out.reserveCapacity(bytes.count)
-        var iterator = bytes.makeIterator()
-        while let b = iterator.next() {
-            guard b == UInt8(ascii: "%") else {
-                out.append(b)
-                continue
+        // Decoding only ever copies or shrinks, so `bytes.count` is an exact upper bound: build into a
+        // single, exclusively-owned `OutputSpan` sized to it (back-deploys to the floor; no
+        // `reserveCapacity` foot-gun, bounds-checked writes, no CoW). A malformed escape sets the flag
+        // and bails; the partially-built buffer is then discarded for the documented `nil`.
+        var malformed = false
+        let result = [UInt8](capacity: bytes.count) { span in
+            var iterator = bytes.makeIterator()
+            while let b = iterator.next() {
+                guard b == UInt8(ascii: "%") else {
+                    span.append(b)
+                    continue
+                }
+                guard let high = iterator.next(), let highValue = Hex.value(high),
+                    let low = iterator.next(), let lowValue = Hex.value(low)
+                else {
+                    malformed = true
+                    return
+                }
+                span.append(highValue << 4 | lowValue)
             }
-            guard let high = iterator.next(), let highValue = Hex.value(high),
-                let low = iterator.next(), let lowValue = Hex.value(low)
-            else { return nil }
-            out.append(highValue << 4 | lowValue)
         }
-        return out
+        return malformed ? nil : result
     }
 }

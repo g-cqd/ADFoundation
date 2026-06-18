@@ -127,4 +127,75 @@ struct EndianTests {
             #expect(raw.loadBE64(6) == 0x0102_0304_0506_0708)
         }
     }
+
+    // MARK: - Span parallels
+
+    /// The `MutableRawSpan` store/load helpers must produce bytes identical to the
+    /// `UnsafeMutableRawBufferPointer` helpers (ADDB's page codec vends a span; the on-disk format
+    /// is byte-critical, so a divergent encoding here would silently corrupt the B+tree).
+    @Test func spanStoresMatchBufferPointerBytes() {
+        let cases: [(UInt16, UInt32, UInt64)] = [
+            (0, 0, 0),
+            (0xBEEF, 0xDEAD_BEEF, 0x0102_0304_0506_0708),
+            (0xFFFF, 0xFFFF_FFFF, 0xFFFF_FFFF_FFFF_FFFF),
+            (1, 0x00AB_CDEF, 0x00FF_00FF_00FF_00FF)
+        ]
+        for (v16, v32, v64) in cases {
+            for off in [0, 2, 4, 6] {
+                var viaPtr = [UInt8](repeating: 0, count: 32)
+                var viaSpanLE = [UInt8](repeating: 0, count: 32)
+                var viaSpanBE = [UInt8](repeating: 0, count: 32)
+                var viaPtrBE = [UInt8](repeating: 0, count: 32)
+                viaPtr.withUnsafeMutableBytes { raw in
+                    raw.storeLE16(v16, at: off)
+                    raw.storeLE32(v32, at: off + 8)
+                    raw.storeLE64(v64, at: off + 16)
+                }
+                viaPtrBE.withUnsafeMutableBytes { raw in
+                    raw.storeBE16(v16, at: off)
+                    raw.storeBE32(v32, at: off + 8)
+                    raw.storeBE64(v64, at: off + 16)
+                }
+                viaSpanLE.withUnsafeMutableBytes { raw in
+                    var span = MutableRawSpan(_unsafeBytes: raw)
+                    span.storeLE16(v16, at: off)
+                    span.storeLE32(v32, at: off + 8)
+                    span.storeLE64(v64, at: off + 16)
+                    // Read-during-write must round-trip through the span itself.
+                    #expect(span.loadLE16(off) == v16)
+                    #expect(span.loadLE32(off + 8) == v32)
+                    #expect(span.loadLE64(off + 16) == v64)
+                }
+                viaSpanBE.withUnsafeMutableBytes { raw in
+                    var span = MutableRawSpan(_unsafeBytes: raw)
+                    span.storeBE16(v16, at: off)
+                    span.storeBE32(v32, at: off + 8)
+                    span.storeBE64(v64, at: off + 16)
+                    #expect(span.loadBE16(off) == v16)
+                    #expect(span.loadBE32(off + 8) == v32)
+                    #expect(span.loadBE64(off + 16) == v64)
+                }
+                #expect(viaSpanLE == viaPtr, "LE span/pointer byte mismatch at offset \(off)")
+                #expect(viaSpanBE == viaPtrBE, "BE span/pointer byte mismatch at offset \(off)")
+            }
+        }
+    }
+
+    /// `RawSpan` loads must match the `UnsafeRawBufferPointer` loads byte-for-byte over the same
+    /// fixed pattern (the read side of the page codec).
+    @Test func rawSpanLoadsMatchBufferPointerLoads() {
+        let bytes: [UInt8] = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
+        bytes.withUnsafeBytes { raw in
+            let span = RawSpan(_unsafeBytes: raw)
+            #expect(span.loadLE16(0) == raw.loadLE16(0))
+            #expect(span.loadLE32(0) == raw.loadLE32(0))
+            #expect(span.loadLE64(0) == raw.loadLE64(0))
+            #expect(span.loadBE16(0) == raw.loadBE16(0))
+            #expect(span.loadBE32(0) == raw.loadBE32(0))
+            #expect(span.loadBE64(0) == raw.loadBE64(0))
+            // Spot-check the absolute values too.
+            #expect(span.loadLE64(0) == 0x0807_0605_0403_0201)
+            #expect(span.loadBE64(0) == 0x0102_0304_0506_0708)
+        }
+    }
 }

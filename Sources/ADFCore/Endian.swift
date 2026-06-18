@@ -73,3 +73,79 @@ extension UnsafeMutableRawBufferPointer {
         unsafe storeBytes(of: value.bigEndian, toByteOffset: offset, as: UInt64.self)
     }
 }
+
+// MARK: - Span parallels
+
+// The `RawSpan` / `MutableRawSpan` parallels of the buffer-pointer helpers above, for callers
+// vending a compiler-checked, lifetime-bounded byte view instead of a bare pointer (e.g. ADDB's
+// `PageBuf.withMutableBytes` page scope). Same little-/big-endian wrapping, same single unaligned
+// load/store lowering; the reads stay `unsafe` (the strict-memory-safety mode flags
+// `unsafeLoadUnaligned`), the bounds-checked `storeBytes` does not.
+extension RawSpan {
+    @inlinable
+    public func loadLE16(_ offset: Int) -> UInt16 {
+        unsafe UInt16(littleEndian: unsafeLoadUnaligned(fromByteOffset: offset, as: UInt16.self))
+    }
+    @inlinable
+    public func loadLE32(_ offset: Int) -> UInt32 {
+        unsafe UInt32(littleEndian: unsafeLoadUnaligned(fromByteOffset: offset, as: UInt32.self))
+    }
+    @inlinable
+    public func loadLE64(_ offset: Int) -> UInt64 {
+        unsafe UInt64(littleEndian: unsafeLoadUnaligned(fromByteOffset: offset, as: UInt64.self))
+    }
+    @inlinable
+    public func loadBE16(_ offset: Int) -> UInt16 {
+        unsafe UInt16(bigEndian: unsafeLoadUnaligned(fromByteOffset: offset, as: UInt16.self))
+    }
+    @inlinable
+    public func loadBE32(_ offset: Int) -> UInt32 {
+        unsafe UInt32(bigEndian: unsafeLoadUnaligned(fromByteOffset: offset, as: UInt32.self))
+    }
+    @inlinable
+    public func loadBE64(_ offset: Int) -> UInt64 {
+        unsafe UInt64(bigEndian: unsafeLoadUnaligned(fromByteOffset: offset, as: UInt64.self))
+    }
+}
+
+extension MutableRawSpan {
+    // The little-/big-endian *loads* read through the borrowing `.bytes` (`RawSpan`) view so the
+    // bodies live in one place; all `@inlinable`, so each still lowers to a single unaligned load.
+    // (The `unsafe` already lives inside each `RawSpan.loadXX`, so `.bytes` + the delegate is safe.)
+    @inlinable
+    public func loadLE16(_ offset: Int) -> UInt16 { bytes.loadLE16(offset) }
+    @inlinable
+    public func loadLE32(_ offset: Int) -> UInt32 { bytes.loadLE32(offset) }
+    @inlinable
+    public func loadLE64(_ offset: Int) -> UInt64 { bytes.loadLE64(offset) }
+    @inlinable
+    public func loadBE16(_ offset: Int) -> UInt16 { bytes.loadBE16(offset) }
+    @inlinable
+    public func loadBE32(_ offset: Int) -> UInt32 { bytes.loadBE32(offset) }
+    @inlinable
+    public func loadBE64(_ offset: Int) -> UInt64 { bytes.loadBE64(offset) }
+    @inlinable
+    public mutating func storeLE16(_ value: UInt16, at offset: Int) {
+        storeBytes(of: value.littleEndian, toByteOffset: offset, as: UInt16.self)
+    }
+    @inlinable
+    public mutating func storeLE32(_ value: UInt32, at offset: Int) {
+        storeBytes(of: value.littleEndian, toByteOffset: offset, as: UInt32.self)
+    }
+    @inlinable
+    public mutating func storeLE64(_ value: UInt64, at offset: Int) {
+        storeBytes(of: value.littleEndian, toByteOffset: offset, as: UInt64.self)
+    }
+    @inlinable
+    public mutating func storeBE16(_ value: UInt16, at offset: Int) {
+        storeBytes(of: value.bigEndian, toByteOffset: offset, as: UInt16.self)
+    }
+    @inlinable
+    public mutating func storeBE32(_ value: UInt32, at offset: Int) {
+        storeBytes(of: value.bigEndian, toByteOffset: offset, as: UInt32.self)
+    }
+    @inlinable
+    public mutating func storeBE64(_ value: UInt64, at offset: Int) {
+        storeBytes(of: value.bigEndian, toByteOffset: offset, as: UInt64.self)
+    }
+}

@@ -17,7 +17,15 @@ extension UnsafeRawBufferPointer {
     public func loadLE64(_ offset: Int) -> UInt64 {
         unsafe UInt64(littleEndian: loadUnaligned(fromByteOffset: offset, as: UInt64.self))
     }
-    /// Big-endian 64-bit load (a single byte-swapped load, not a shift loop) for order-preserving keys.
+    /// Big-endian loads (a single byte-swapped load, not a shift loop) for order-preserving keys.
+    @inlinable
+    public func loadBE16(_ offset: Int) -> UInt16 {
+        unsafe UInt16(bigEndian: loadUnaligned(fromByteOffset: offset, as: UInt16.self))
+    }
+    @inlinable
+    public func loadBE32(_ offset: Int) -> UInt32 {
+        unsafe UInt32(bigEndian: loadUnaligned(fromByteOffset: offset, as: UInt32.self))
+    }
     @inlinable
     public func loadBE64(_ offset: Int) -> UInt64 {
         unsafe UInt64(bigEndian: loadUnaligned(fromByteOffset: offset, as: UInt64.self))
@@ -25,18 +33,21 @@ extension UnsafeRawBufferPointer {
 }
 
 extension UnsafeMutableRawBufferPointer {
+    // The little-endian *loads* mirror the `UnsafeRawBufferPointer` ones; delegate through an
+    // immutable view so the bodies live in one place (all `@inlinable`, so each still lowers to a
+    // single unaligned load).
     @inlinable
-    public func loadLE16(_ offset: Int) -> UInt16 {
-        unsafe UInt16(littleEndian: loadUnaligned(fromByteOffset: offset, as: UInt16.self))
-    }
+    public func loadLE16(_ offset: Int) -> UInt16 { unsafe UnsafeRawBufferPointer(self).loadLE16(offset) }
     @inlinable
-    public func loadLE32(_ offset: Int) -> UInt32 {
-        unsafe UInt32(littleEndian: loadUnaligned(fromByteOffset: offset, as: UInt32.self))
-    }
+    public func loadLE32(_ offset: Int) -> UInt32 { unsafe UnsafeRawBufferPointer(self).loadLE32(offset) }
     @inlinable
-    public func loadLE64(_ offset: Int) -> UInt64 {
-        unsafe UInt64(littleEndian: loadUnaligned(fromByteOffset: offset, as: UInt64.self))
-    }
+    public func loadLE64(_ offset: Int) -> UInt64 { unsafe UnsafeRawBufferPointer(self).loadLE64(offset) }
+    @inlinable
+    public func loadBE16(_ offset: Int) -> UInt16 { unsafe UnsafeRawBufferPointer(self).loadBE16(offset) }
+    @inlinable
+    public func loadBE32(_ offset: Int) -> UInt32 { unsafe UnsafeRawBufferPointer(self).loadBE32(offset) }
+    @inlinable
+    public func loadBE64(_ offset: Int) -> UInt64 { unsafe UnsafeRawBufferPointer(self).loadBE64(offset) }
     @inlinable
     public func storeLE16(_ value: UInt16, at offset: Int) {
         unsafe storeBytes(of: value.littleEndian, toByteOffset: offset, as: UInt16.self)
@@ -48,5 +59,17 @@ extension UnsafeMutableRawBufferPointer {
     @inlinable
     public func storeLE64(_ value: UInt64, at offset: Int) {
         unsafe storeBytes(of: value.littleEndian, toByteOffset: offset, as: UInt64.self)
+    }
+    @inlinable
+    public func storeBE16(_ value: UInt16, at offset: Int) {
+        unsafe storeBytes(of: value.bigEndian, toByteOffset: offset, as: UInt16.self)
+    }
+    @inlinable
+    public func storeBE32(_ value: UInt32, at offset: Int) {
+        unsafe storeBytes(of: value.bigEndian, toByteOffset: offset, as: UInt32.self)
+    }
+    @inlinable
+    public func storeBE64(_ value: UInt64, at offset: Int) {
+        unsafe storeBytes(of: value.bigEndian, toByteOffset: offset, as: UInt64.self)
     }
 }

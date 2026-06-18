@@ -26,6 +26,8 @@
     public let capacity: Int
 
     public init(fileDescriptor: Int32, capacity: Int) throws(IOError) {
+        // `mmap` rejects a zero length with EINVAL; surface it as a clear precondition failure.
+        guard capacity > 0 else { throw IOError(errno: EINVAL, op: "mmap(capacity: \(capacity))") }
         let ptr = unsafe mmap(nil, capacity, PROT_READ, MAP_SHARED, fileDescriptor, 0)
         guard let ptr = unsafe ptr, unsafe ptr != MAP_FAILED else { throw ioErrno("mmap(\(capacity))") }
         unsafe self.base = UnsafeRawPointer(ptr)
@@ -44,7 +46,13 @@
     /// the type's caller contract).
     @inline(__always)
     public func region(offset: Int, count: Int) -> UnsafeRawBufferPointer {
-        unsafe UnsafeRawBufferPointer(start: base + offset, count: count)
+        // Debug-only guard against gross misuse (negative or past-capacity ranges); compiled out of
+        // release builds, so the documented "not bounds-checked" hot path is unchanged. It cannot see
+        // the file's committed length, so the file-shrink contract still rests with the caller.
+        assert(
+            offset >= 0 && count >= 0 && count <= capacity && offset <= capacity - count,
+            "RawFileMap.region(offset: \(offset), count: \(count)) escapes the \(capacity)-byte mapping")
+        return unsafe UnsafeRawBufferPointer(start: base + offset, count: count)
     }
 
     /// Advisory readahead for `length` bytes starting at `offset`. `MADV_WILLNEED`

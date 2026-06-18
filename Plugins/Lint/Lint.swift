@@ -46,10 +46,10 @@ struct LintPlugin: CommandPlugin {
         if scanForbiddenStrtod(root: root) { failed = true }
 
         if failed {
-            Diagnostics.error("lint failed")
-        } else {
-            print("lint clean")
+            // Throw (not merely diagnose) so the command exits non-zero and actually fails CI.
+            throw LintError.failed
         }
+        print("lint clean")
     }
 
     /// Run `swift <args>` synchronously; returns the exit status (non-zero ⇒ failure).
@@ -109,4 +109,9 @@ struct LintPlugin: CommandPlugin {
         }
         return found
     }
+}
+
+private enum LintError: Error, CustomStringConvertible {
+    case failed
+    var description: String { "lint failed" }
 }

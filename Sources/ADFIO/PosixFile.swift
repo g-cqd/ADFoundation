@@ -55,16 +55,17 @@ public final class PosixFile: @unchecked Sendable {
     }
 
     public func pread(into buffer: UnsafeMutableRawBufferPointer, at offset: Int) throws(IOError) {
+        guard let base = buffer.baseAddress else { return }  // empty buffer: nothing to read
         var done = 0
         while done < buffer.count {
             // Module-qualified to disambiguate the libc syscall from this type's own
             // `pread` method; the module name is the only thing that differs by platform.
             #if canImport(Darwin)
                 let n = unsafe Darwin.pread(
-                    fileDescriptor, buffer.baseAddress! + done, buffer.count - done, off_t(offset + done))
+                    fileDescriptor, base + done, buffer.count - done, off_t(offset + done))
             #else
                 let n = unsafe Glibc.pread(
-                    fileDescriptor, buffer.baseAddress! + done, buffer.count - done, off_t(offset + done))
+                    fileDescriptor, base + done, buffer.count - done, off_t(offset + done))
             #endif
             if n < 0 {
                 if errno == EINTR { continue }
@@ -76,19 +77,23 @@ public final class PosixFile: @unchecked Sendable {
     }
 
     public func pwrite(_ buffer: UnsafeRawBufferPointer, at offset: Int) throws(IOError) {
+        guard let base = buffer.baseAddress else { return }  // empty buffer: nothing to write
         var done = 0
         while done < buffer.count {
             #if canImport(Darwin)
                 let n = unsafe Darwin.pwrite(
-                    fileDescriptor, buffer.baseAddress! + done, buffer.count - done, off_t(offset + done))
+                    fileDescriptor, base + done, buffer.count - done, off_t(offset + done))
             #else
                 let n = unsafe Glibc.pwrite(
-                    fileDescriptor, buffer.baseAddress! + done, buffer.count - done, off_t(offset + done))
+                    fileDescriptor, base + done, buffer.count - done, off_t(offset + done))
             #endif
             if n < 0 {
                 if errno == EINTR { continue }
                 throw ioErrno("pwrite")
             }
+            // A zero-byte return for a non-empty request makes no forward progress; treat it as a
+            // short write rather than spin forever (mirrors the `pread` short-read guard).
+            if n == 0 { throw IOError(errno: 0, op: "pwrite(zero-length write at \(offset + done))") }
             done += n
         }
     }
@@ -105,16 +110,22 @@ public final class PosixFile: @unchecked Sendable {
             let count = unsafe min(buffers.count - index, iovCap)
             let batch = unsafe buffers[index..<(index + count)]
             let total = unsafe batch.reduce(0) { $0 + $1.count }
-            var iov = unsafe batch.map { buf in
-                unsafe iovec(
-                    iov_base: UnsafeMutableRawPointer(mutating: buf.baseAddress),
-                    iov_len: buf.count)
-            }
-            let n = unsafe iov.withUnsafeMutableBufferPointer { ptr in
+            // Build the iovec batch in scratch storage (stack for typical fan-out, heap for large)
+            // instead of allocating a fresh `[iovec]` per batch. `iovec` is trivial, so the temporary
+            // needs no explicit deinitialization.
+            let n = unsafe withUnsafeTemporaryAllocation(of: iovec.self, capacity: count) { iov -> Int in
+                for k in 0..<count {
+                    let buf = unsafe buffers[index + k]
+                    unsafe iov.initializeElement(
+                        at: k,
+                        to: iovec(
+                            iov_base: UnsafeMutableRawPointer(mutating: buf.baseAddress),
+                            iov_len: buf.count))
+                }
                 #if canImport(Darwin)
-                    unsafe Darwin.pwritev(fileDescriptor, ptr.baseAddress, Int32(count), off_t(at))
+                    return unsafe Darwin.pwritev(fileDescriptor, iov.baseAddress, Int32(count), off_t(at))
                 #else
-                    unsafe Glibc.pwritev(fileDescriptor, ptr.baseAddress, Int32(count), off_t(at))
+                    return unsafe Glibc.pwritev(fileDescriptor, iov.baseAddress, Int32(count), off_t(at))
                 #endif
             }
             if n < 0 {

@@ -45,6 +45,24 @@ nonisolated(unsafe) let benchmarks = {
         }
     }
 
+    // MARK: ByteBufferPool take/recycle throughput — the baseline for the zero-dependency, LIFO
+    // Array backing. A swift-collections `Deque` is deliberately not adopted: the pool only appends
+    // and pops the tail (both O(1) on Array), so a deque's O(1) head removal buys nothing here, and
+    // ADFCore must stay dependency-free for the portable consumers. This guards the backing against
+    // regressions.
+    for size in [64, 4096] {
+        let pool = ByteBufferPool()
+        let payload = [UInt8](repeating: 0xAB, count: size)
+        Benchmark("pool/take-recycle \(size)B") { bm in
+            for _ in bm.scaledIterations {
+                var b = pool.take()
+                b.append(contentsOf: payload)
+                blackHole(b.count)
+                pool.recycle(b)
+            }
+        }
+    }
+
     // MARK: UTF-8 validation — scalar vs adaptive(SIMD), ASCII vs multibyte-dense.
     for n in [256, 4096] {
         let ascii = asciiBytes(n)

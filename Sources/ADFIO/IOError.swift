@@ -22,13 +22,23 @@ public struct IOError: Error, Equatable, Sendable {
 
 extension IOError: CustomStringConvertible {
     public var description: String {
-        // `strerror_r` writes into a caller-owned buffer, so concurrent error
-        // formatting cannot corrupt it (unlike `strerror`'s shared static buffer).
-        // Swift surfaces the XSI/POSIX `strerror_r` (returns `Int`, always fills
-        // the caller buffer) on both Darwin and the Linux/Glibc toolchain.
+        // Format `errno` into a caller-owned buffer so concurrent formatting can't corrupt a shared
+        // static buffer (as plain `strerror` would). Darwin and Glibc expose different `strerror_r`
+        // contracts, handled explicitly below; the buffer is zero-initialized first so no branch can
+        // ever read uninitialized stack memory.
         let detail = unsafe withUnsafeTemporaryAllocation(of: CChar.self, capacity: 256) { buffer in
-            _ = unsafe strerror_r(errno, buffer.baseAddress!, buffer.count)
-            return unsafe String(cString: buffer.baseAddress!)
+            guard let base = buffer.baseAddress else { return "errno \(errno)" }
+            unsafe base.initialize(repeating: 0, count: buffer.count)
+            #if canImport(Darwin)
+                // XSI `strerror_r`: returns 0 on success and fills the buffer. On failure don't trust
+                // a partially written buffer — surface the bare errno instead.
+                guard unsafe strerror_r(errno, base, buffer.count) == 0 else { return "errno \(errno)" }
+                return unsafe String(cString: base)
+            #else
+                // GNU `strerror_r` (the Glibc default): returns a `char *` that may point at a static
+                // string rather than the supplied buffer, so the *return value* is the message.
+                return unsafe String(cString: strerror_r(errno, base, buffer.count))
+            #endif
         }
         return "I/O error in \(op): \(detail) (errno \(errno))"
     }

@@ -25,12 +25,15 @@ public final class ByteBufferPool: Sendable {
     }
 
     /// Returns a buffer to the pool, cleared but keeping its capacity, subject to the size/count caps.
-    public func recycle(_ buffer: [UInt8]) {
+    ///
+    /// Takes ownership (`consuming`) so the clear runs in place: a still-shared array would force
+    /// `removeAll(keepingCapacity:)` to copy rather than reuse the storage.
+    public func recycle(_ buffer: consuming [UInt8]) {
         guard buffer.capacity <= maxBufferCapacity else { return }
-        var b = buffer
-        b.removeAll(keepingCapacity: true)
+        var cleared = buffer  // move (not copy) out of the consumed parameter
+        cleared.removeAll(keepingCapacity: true)
         storage.withLock { pool in
-            if pool.count < maxPooled { pool.append(b) }
+            if pool.count < maxPooled { pool.append(cleared) }
         }
     }
 }

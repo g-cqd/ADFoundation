@@ -47,28 +47,55 @@ public enum ADFText {
         if abs(m - n) > maxDistance { return maxDistance + 1 }
         if m == 0 { return n <= maxDistance ? n : maxDistance + 1 }
         if n == 0 { return m <= maxDistance ? m : maxDistance + 1 }
-
-        var previous = Array(0...n)
-        var current = [Int](repeating: 0, count: n + 1)
-        for i in 1...m {
-            current[0] = i
-            var rowMin = i
-            let ai = a[i - 1]
-            for j in 1...n {
-                current[j] =
-                    ai == b[j - 1]
-                    ? previous[j - 1]
-                    : 1 + Swift.min(previous[j], current[j - 1], previous[j - 1])
-                if current[j] < rowMin { rowMin = current[j] }
+        // Drive the two rolling rows with the shorter input so the scratch block and the inner loop
+        // are O(min(m, n)). Edit distance is symmetric, so orienting the matrix this way is exact.
+        let (rows, cols) = m >= n ? (a, b) : (b, a)
+        return rows.withUnsafeBufferPointer { rowBuf in
+            cols.withUnsafeBufferPointer { colBuf in
+                fullMatrix(rows: rowBuf, cols: colBuf, maxDistance: maxDistance)
             }
-            if rowMin > maxDistance { return maxDistance + 1 }
-            swap(&previous, &current)
         }
-        // Saturate at `maxDistance + 1`: the row-minimum early-exit can miss a final distance that
-        // only exceeds the bound on the last column, so clamp for a well-defined bounded contract
-        // (matching the banded path). When `maxDistance == .max` the comparison is never true.
-        let distance = previous[n]
-        return distance > maxDistance ? maxDistance + 1 : distance
+    }
+
+    /// Core of ``editDistanceFull(_:_:maxDistance:)`` over borrowed buffers. The two rolling rows of
+    /// `cols.count + 1` cells share one `withUnsafeTemporaryAllocation` block (stack-allocated for
+    /// typical sizes, heap for large), and every cell is reached through unchecked buffer subscripts,
+    /// so the O(`rows.count`·`cols.count`) loop carries no per-cell bounds check and allocates no rows.
+    private static func fullMatrix<Element: Equatable>(
+        rows: UnsafeBufferPointer<Element>, cols: UnsafeBufferPointer<Element>, maxDistance: Int
+    ) -> Int {
+        let m = rows.count
+        let n = cols.count
+        return withUnsafeTemporaryAllocation(of: Int.self, capacity: 2 * (n + 1)) { scratch in
+            var prev = 0
+            var cur = n + 1
+            for j in 0...n { scratch[j] = j }
+            for i in 1...m {
+                scratch[cur] = i
+                var rowMin = i
+                let ai = rows[i - 1]
+                for j in 1...n {
+                    let value: Int
+                    if ai == cols[j - 1] {
+                        value = scratch[prev + j - 1]
+                    } else {
+                        let deletion = scratch[prev + j]
+                        let insertion = scratch[cur + j - 1]
+                        let substitution = scratch[prev + j - 1]
+                        value = 1 + Swift.min(deletion, insertion, substitution)
+                    }
+                    scratch[cur + j] = value
+                    if value < rowMin { rowMin = value }
+                }
+                if rowMin > maxDistance { return maxDistance + 1 }
+                swap(&prev, &cur)
+            }
+            // Saturate at `maxDistance + 1`: the row-minimum early-exit can miss a final distance that
+            // only exceeds the bound on the last column, so clamp for a well-defined bounded contract
+            // (matching the banded path). When `maxDistance == .max` the comparison is never true.
+            let distance = scratch[prev + n]
+            return distance > maxDistance ? maxDistance + 1 : distance
+        }
     }
 
     /// Banded Levenshtein: only the diagonal band `|i − j| ≤ maxDistance` is evaluated (cells outside
@@ -82,35 +109,55 @@ public enum ADFText {
         if abs(m - n) > k { return k + 1 }
         if m == 0 { return n <= k ? n : k + 1 }
         if n == 0 { return m <= k ? m : k + 1 }
-
-        // `inf` is one past the bound: any path through it is already over budget. Cells outside the
-        // current/previous band are held at `inf` so reads from them propagate "unreachable".
-        let inf = k + 1
-        var previous = [Int](repeating: inf, count: n + 1)
-        var current = [Int](repeating: inf, count: n + 1)
-        for j in 0...Swift.min(k, n) { previous[j] = j }
-
-        for i in 1...m {
-            let lo = Swift.max(0, i - k)
-            let hi = Swift.min(n, i + k)
-            if lo > 0 { current[lo - 1] = inf }  // left boundary read by current[j-1] at j == lo
-            var rowMin = inf
-            for j in lo...hi {
-                let value: Int
-                if j == 0 {
-                    value = i  // reached only while i ≤ k (lo == 0)
-                } else {
-                    let cost = a[i - 1] == b[j - 1] ? 0 : 1
-                    value = Swift.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost)
-                }
-                current[j] = value
-                if value < rowMin { rowMin = value }
+        return a.withUnsafeBufferPointer { aBuf in
+            b.withUnsafeBufferPointer { bBuf in
+                bandedMatrix(a: aBuf, b: bBuf, maxDistance: k)
             }
-            if hi < n { current[hi + 1] = inf }  // right boundary read by previous[j] next row
-            if rowMin > k { return k + 1 }
-            swap(&previous, &current)
         }
-        let distance = previous[n]
-        return distance > k ? k + 1 : distance
+    }
+
+    /// Core of ``editDistanceBanded(_:_:maxDistance:)`` over borrowed buffers. The two rolling rows
+    /// share one `withUnsafeTemporaryAllocation` block reached through unchecked subscripts, so the
+    /// banded loop carries no per-cell bounds check and allocates no rows. The whole block is
+    /// initialized to `inf` up front: cells outside the band are never written in a given row, so a
+    /// later read of one must see `inf` (unreachable) rather than uninitialized scratch memory.
+    private static func bandedMatrix<Element: Equatable>(
+        a: UnsafeBufferPointer<Element>, b: UnsafeBufferPointer<Element>, maxDistance k: Int
+    ) -> Int {
+        let m = a.count
+        let n = b.count
+        // `inf` is one past the bound: any path through it is already over budget.
+        let inf = k + 1
+        return withUnsafeTemporaryAllocation(of: Int.self, capacity: 2 * (n + 1)) { scratch in
+            var prev = 0
+            var cur = n + 1
+            for idx in 0..<(2 * (n + 1)) { scratch[idx] = inf }
+            for j in 0...Swift.min(k, n) { scratch[j] = j }  // prev region seed (prev == 0)
+            for i in 1...m {
+                let lo = Swift.max(0, i - k)
+                let hi = Swift.min(n, i + k)
+                if lo > 0 { scratch[cur + lo - 1] = inf }  // left boundary read by current[j-1] at j == lo
+                var rowMin = inf
+                for j in lo...hi {
+                    let value: Int
+                    if j == 0 {
+                        value = i  // reached only while i ≤ k (lo == 0)
+                    } else {
+                        let cost = a[i - 1] == b[j - 1] ? 0 : 1
+                        let deletion = scratch[prev + j] + 1
+                        let insertion = scratch[cur + j - 1] + 1
+                        let substitution = scratch[prev + j - 1] + cost
+                        value = Swift.min(deletion, insertion, substitution)
+                    }
+                    scratch[cur + j] = value
+                    if value < rowMin { rowMin = value }
+                }
+                if hi < n { scratch[cur + hi + 1] = inf }  // right boundary read by previous[j] next row
+                if rowMin > k { return k + 1 }
+                swap(&prev, &cur)
+            }
+            let distance = scratch[prev + n]
+            return distance > k ? k + 1 : distance
+        }
     }
 }

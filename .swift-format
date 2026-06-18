@@ -12,6 +12,7 @@
   "rules": {
     "OrderedImports": true,
     "DoNotUseSemicolons": true,
-    "NoLeadingUnderscores": false
+    "NoLeadingUnderscores": false,
+    "NeverUseImplicitlyUnwrappedOptionals": true
   }
 }

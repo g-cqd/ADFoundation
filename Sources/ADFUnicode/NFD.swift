@@ -8,6 +8,14 @@
 // stable by Unicode policy for assigned scalars; the parity fixtures cover
 // multi-mark reordering in both source orders to keep this honest.
 
+/// Builds a scalar from a value that is valid by construction — Hangul jamo arithmetic, engine-derived
+/// NFD payloads, or ASCII case math — so the failable initializer never yields nil at these call sites.
+@inline(__always)
+func validUnicodeScalar(_ v: UInt32) -> Unicode.Scalar {
+    // swift-format-ignore: NeverForceUnwrap
+    Unicode.Scalar(v)!
+}
+
 public enum NFD {
     public static func decompose(_ scalars: [Unicode.Scalar]) -> [Unicode.Scalar] {
         var out: [Unicode.Scalar] = []
@@ -30,15 +38,15 @@ public enum NFD {
         if v >= 0xAC00, v <= 0xD7A3 {
             // Hangul syllable → L V [T] jamo.
             let sIndex = v - 0xAC00
-            out.append(Unicode.Scalar(0x1100 + sIndex / 588)!)
-            out.append(Unicode.Scalar(0x1161 + (sIndex % 588) / 28)!)
+            out.append(validUnicodeScalar(0x1100 + sIndex / 588))
+            out.append(validUnicodeScalar(0x1161 + (sIndex % 588) / 28))
             let t = sIndex % 28
-            if t > 0 { out.append(Unicode.Scalar(0x11A7 + t)!) }
+            if t > 0 { out.append(validUnicodeScalar(0x11A7 + t)) }
             return
         }
         if let payload = UnicodeSets.nfdDecomposition(of: v) {
             // Payload scalars come from real engine output; always valid.
-            for p in payload { out.append(Unicode.Scalar(p)!) }
+            for p in payload { out.append(validUnicodeScalar(p)) }
             return
         }
         out.append(s)

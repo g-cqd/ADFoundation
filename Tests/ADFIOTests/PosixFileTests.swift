@@ -71,6 +71,82 @@ private func makeTempPath() -> String {
             _ = try PosixFile(path: "/nonexistent-dir-xyz/file.bin", mode: .readOnly)
         }
     }
+
+    @Test func vectoredWriteBatchesBeyondIOVMaxWithEmptyBuffers() throws {
+        let path = makeTempPath()
+        let file = try PosixFile(path: path, mode: .readWrite(create: true))
+        defer {
+            file.close()
+            _ = path.withCString { unlink($0) }
+        }
+        // More iovecs than IOV_MAX (1024 on the supported platforms) forces the chunked batch loop;
+        // interleaved empty buffers exercise the zero-length iovec handling.
+        let logicalCount = 1100
+        var payload: [UInt8] = []
+        var empties: [Bool] = []
+        for i in 0..<logicalCount {
+            let isEmpty = i % 7 == 0
+            empties.append(isEmpty)
+            if !isEmpty { payload.append(UInt8(i & 0xFF)) }
+        }
+        try payload.withUnsafeBytes { raw in
+            var views: [UnsafeRawBufferPointer] = []
+            views.reserveCapacity(logicalCount)
+            var cursor = 0
+            for isEmpty in empties {
+                if isEmpty {
+                    views.append(UnsafeRawBufferPointer(start: nil, count: 0))
+                } else {
+                    views.append(UnsafeRawBufferPointer(rebasing: raw[cursor..<(cursor + 1)]))
+                    cursor += 1
+                }
+            }
+            try file.pwritev(views, at: 0)
+        }
+        var readback = [UInt8](repeating: 0, count: payload.count)
+        try readback.withUnsafeMutableBytes { try file.pread(into: $0, at: 0) }
+        #expect(readback == payload)
+        #expect(try file.fileSize() == payload.count)
+    }
+
+    @Test func syncProfilesDoNotThrow() throws {
+        let path = makeTempPath()
+        let file = try PosixFile(path: path, mode: .readWrite(create: true))
+        defer {
+            file.close()
+            _ = path.withCString { unlink($0) }
+        }
+        let payload: [UInt8] = [1, 2, 3, 4]
+        try payload.withUnsafeBytes { try file.pwrite($0, at: 0) }
+        try file.sync(.none)
+        try file.sync(.barrier)
+        try file.sync(.full)
+        #expect(try file.fileSize() == 4)
+    }
+
+    @Test func setNoCacheTogglesWithoutThrowing() throws {
+        let path = makeTempPath()
+        let file = try PosixFile(path: path, mode: .readWrite(create: true))
+        defer {
+            file.close()
+            _ = path.withCString { unlink($0) }
+        }
+        file.setNoCache(true)
+        file.setNoCache(false)
+    }
+
+    @Test func preallocateIsIdempotentWhenAlreadyLargeEnough() throws {
+        let path = makeTempPath()
+        let file = try PosixFile(path: path, mode: .readWrite(create: true))
+        defer {
+            file.close()
+            _ = path.withCString { unlink($0) }
+        }
+        try file.preallocate(minimumSize: 4096)
+        #expect(try file.fileSize() == 4096)
+        try file.preallocate(minimumSize: 1000)  // already larger → no-op
+        #expect(try file.fileSize() == 4096)
+    }
 }
 
 @Suite struct RawFileMapTests {
@@ -91,21 +167,62 @@ private func makeTempPath() -> String {
         #expect(Array(region) == payload)
         #expect(map.capacity == 64)
     }
+
+    @Test func prefetchClampsAndIgnoresOutOfRange() throws {
+        let path = makeTempPath()
+        let file = try PosixFile(path: path, mode: .readWrite(create: true))
+        defer {
+            file.close()
+            _ = path.withCString { unlink($0) }
+        }
+        let payload = [UInt8](0..<32)
+        try payload.withUnsafeBytes { try file.pwrite($0, at: 0) }
+        try file.sync(.barrier)
+
+        let map = try RawFileMap(fileDescriptor: file.fileDescriptor, capacity: 32)
+        map.prefetch(offset: 100, length: 8)  // offset past capacity → no-op
+        map.prefetch(offset: 16, length: 4096)  // length clamped to the reserved capacity
+        map.prefetch(offset: 0, length: 0)  // zero length → no-op
+        #expect(Array(map.region(offset: 0, count: 32)) == payload)
+    }
+
+    @Test func zeroCapacityMapThrows() throws {
+        let path = makeTempPath()
+        let file = try PosixFile(path: path, mode: .readWrite(create: true))
+        defer {
+            file.close()
+            _ = path.withCString { unlink($0) }
+        }
+        #expect(throws: IOError.self) {
+            _ = try RawFileMap(fileDescriptor: file.fileDescriptor, capacity: 0)
+        }
+    }
+}
+
+@Suite struct IOErrorTests {
+    /// Exercises the platform `strerror_r` formatting path (XSI on Darwin, GNU on Glibc) — it must
+    /// produce a non-empty message and never read uninitialized memory.
+    @Test func descriptionFormatsErrnoWithoutReadingGarbage() {
+        let text = IOError(errno: ENOENT, op: "open").description
+        #expect(text.hasPrefix("I/O error in open: "))
+        #expect(text.contains("(errno 2)"))  // ENOENT == 2 on Darwin and Linux
+        #expect(text.contains("No such file"))  // strerror(ENOENT), proving the buffer was filled
+    }
 }
 
 @Suite struct AtomicsTests {
-    /// Exercises the re-exported C11 atomics over local (aligned) `UInt64` storage.
+    /// Exercises ``SharedAtomicU64`` over local (aligned) `UInt64` storage.
     @Test func compareExchangeHasReleaseAcquireSemantics() {
         withUnsafeTemporaryAllocation(of: UInt64.self, capacity: 1) { buffer in
-            let p = buffer.baseAddress!
-            adf_atomic_store_release_u64(p, 0)
-            #expect(adf_atomic_load_acquire_u64(p) == 0)
+            let p = UnsafeMutableRawPointer(buffer.baseAddress!)
+            SharedAtomicU64.storeRelease(p, 0)
+            #expect(SharedAtomicU64.loadAcquire(p) == 0)
 
-            #expect(adf_atomic_cas_acq_rel_u64(p, 0, 5))  // 0 → 5 succeeds
-            #expect(adf_atomic_load_acquire_u64(p) == 5)
+            #expect(SharedAtomicU64.compareExchangeAcqRel(p, expected: 0, desired: 5))  // 0 → 5 succeeds
+            #expect(SharedAtomicU64.loadAcquire(p) == 5)
 
-            #expect(!adf_atomic_cas_acq_rel_u64(p, 0, 9))  // expected 0, holds 5 → fails
-            #expect(adf_atomic_load_acquire_u64(p) == 5)
+            #expect(!SharedAtomicU64.compareExchangeAcqRel(p, expected: 0, desired: 9))  // holds 5 → fails
+            #expect(SharedAtomicU64.loadAcquire(p) == 5)
         }
     }
 }

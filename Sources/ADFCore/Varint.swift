@@ -19,6 +19,9 @@ public enum Varint {
         while offset < bytes.count {
             let byte = unsafe bytes[offset]
             offset += 1
+            // The 10th group (shift 63) contributes only bit 63: any higher payload bit, or a
+            // continuation byte demanding an 11th group, exceeds 64 bits — fail cleanly, never truncate.
+            if shift == 63, byte & 0x7F > 0x01 { return nil }
             result |= UInt64(byte & 0x7F) << shift
             if byte & 0x80 == 0 { return result }
             shift += 7
@@ -27,19 +30,10 @@ public enum Varint {
         return nil
     }
 
-    /// Safe `[UInt8]` overload (bounds-checked, no `unsafe`) for callers decoding from arrays.
+    /// `[UInt8]` overload (bounds-checked) for callers decoding from arrays. Delegates to the
+    /// raw-buffer reader so the decode and overflow logic has a single home.
     public static func read(_ bytes: [UInt8], _ offset: inout Int) -> UInt64? {
-        var result: UInt64 = 0
-        var shift: UInt64 = 0
-        while offset < bytes.count {
-            let byte = bytes[offset]
-            offset += 1
-            result |= UInt64(byte & 0x7F) << shift
-            if byte & 0x80 == 0 { return result }
-            shift += 7
-            if shift > 63 { return nil }
-        }
-        return nil
+        unsafe bytes.withUnsafeBytes { unsafe read($0, &offset) }
     }
 
     /// Maps a signed integer to an unsigned varint-friendly value (small magnitudes ⇒ short codes).

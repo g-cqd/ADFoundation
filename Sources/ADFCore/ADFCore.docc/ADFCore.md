@@ -23,3 +23,39 @@ rather than aborting the process.
 - ``Swift/FixedWidthInteger/checkedAdding(_:)``
 - ``Swift/FixedWidthInteger/checkedSubtracting(_:)``
 - ``Swift/FixedWidthInteger/checkedMultiplied(by:)``
+
+### Byte buffers & readers
+
+- ``ByteReader``
+- ``ByteCompare``
+- ``ByteBufferPool``
+
+### Integer & byte codecs
+
+- ``Varint``
+- ``Swift/UnsafeRawBufferPointer/loadLE16(_:)``
+- ``Swift/UnsafeRawBufferPointer/loadLE32(_:)``
+- ``Swift/UnsafeRawBufferPointer/loadLE64(_:)``
+- ``Swift/UnsafeRawBufferPointer/loadBE16(_:)``
+- ``Swift/UnsafeRawBufferPointer/loadBE32(_:)``
+- ``Swift/UnsafeRawBufferPointer/loadBE64(_:)``
+- ``Swift/UnsafeMutableRawBufferPointer/storeLE16(_:at:)``
+- ``Swift/UnsafeMutableRawBufferPointer/storeLE32(_:at:)``
+- ``Swift/UnsafeMutableRawBufferPointer/storeLE64(_:at:)``
+- ``Swift/UnsafeMutableRawBufferPointer/storeBE16(_:at:)``
+- ``Swift/UnsafeMutableRawBufferPointer/storeBE32(_:at:)``
+- ``Swift/UnsafeMutableRawBufferPointer/storeBE64(_:at:)``
+
+### ASCII, hex & UTF-8
+
+- ``ASCII``
+- ``Hex``
+- ``UTF8Validation``
+
+### Percent-coding
+
+- ``PercentCoding``
+
+### Hashing
+
+- ``XXH64``

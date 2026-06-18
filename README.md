@@ -57,12 +57,16 @@ transformers.js-parity Unicode tables, while ADSQL keeps its distinct SQLite-uni
 - **Neutral errors at the seam.** `ADFIO` throws a domain-neutral `IOError(errno:op:)`; a consumer
   with a richer taxonomy (e.g. a database error enum) maps it at its own boundary.
 - **No recursion on untrusted input.** Decoders and scanners are iterative.
+- **Aligned cross-process atomics.** `ADFIO`'s C11 atomics require 8-byte-aligned shared memory; the
+  caller's table layout guarantees it (see the `ADFAtomics` header contract).
 
 ## Platforms
 
-macOS 15 · iOS 18 · tvOS 18 · watchOS 11 · visionOS 2. `Synchronization` (`Mutex`/`Atomic`) and
-`Span`/`RawSpan` are available at this floor; the 2025-SDK-gated `InlineArray`/`UTF8Span` are
-deliberately not adopted.
+macOS 15 · iOS 18 · tvOS 18 · watchOS 11 · visionOS 2. `Synchronization` (`Mutex`/`Atomic`) is
+available at this floor. `Span`/`RawSpan` are **deferred** — their ergonomic constructors and
+stored-view lifetimes still sit behind experimental lifetime features on the pinned toolchain — and
+the 2025-SDK-gated `InlineArray`/`UTF8Span` are likewise not adopted. The byte APIs therefore present
+an `UnsafeRawBufferPointer` surface for now.
 
 ## Usage
 

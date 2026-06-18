@@ -93,9 +93,6 @@ let package = Package(
     ],
     dependencies: packageDependencies,
     targets: [
-        // ADFAtomics — C11 cross-process atomics over raw shared memory. Header-only
-        // static inlines; re-exported by ADFIO. No Swift settings (C target).
-        .target(name: "ADFAtomics"),
         // ADFCore — pointer-level byte primitives; SE-0458 strict memory safety.
         .target(name: "ADFCore", swiftSettings: kernelSettings, plugins: libraryBuildPlugins),
         // ADFUnicode — generic Unicode kernel over ADFCore byte buffers.
@@ -106,10 +103,10 @@ let package = Package(
         .target(
             name: "ADFText", dependencies: ["ADFCore", "ADFUnicode"], swiftSettings: strictSettings,
             plugins: libraryBuildPlugins),
-        // ADFIO — POSIX storage primitives over libc + the re-exported C11 atomics;
-        // SE-0458 strict memory safety.
+        // ADFIO — POSIX storage primitives over libc + pure-Swift cross-process atomics
+        // (`SharedAtomicU64` over `Synchronization.Atomic`); SE-0458 strict memory safety.
         .target(
-            name: "ADFIO", dependencies: ["ADFCore", "ADFAtomics"], swiftSettings: kernelSettings,
+            name: "ADFIO", dependencies: ["ADFCore"], swiftSettings: kernelSettings,
             plugins: libraryBuildPlugins),
         // ADFoundation — umbrella re-export of every zero-dependency runtime tier (ADFMacroSupport is
         // excluded: it links swift-syntax and is imported directly by macro plugins).
@@ -130,6 +127,7 @@ let package = Package(
             plugins: libraryBuildPlugins),
 
         .testTarget(name: "ADFCoreTests", dependencies: ["ADFCore"], swiftSettings: testSettings),
+        .testTarget(name: "ADFUnicodeTests", dependencies: ["ADFUnicode"], swiftSettings: testSettings),
         .testTarget(name: "ADFTextTests", dependencies: ["ADFText"], swiftSettings: testSettings),
         .testTarget(name: "ADFIOTests", dependencies: ["ADFIO"], swiftSettings: testSettings),
         .testTarget(

@@ -12,13 +12,16 @@ concurrency:
 
 jobs:
   lint:
-    name: Format lint
+    name: Lint (format + shipped-library discipline)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      # The toolchain ships swift-format; the `.swift-version` file pins 6.3.2.
-      - name: swift format lint --strict
-        run: swift format lint --strict --recursive Sources Tests Plugins Package.swift
+      # Run the package's own `lint` plugin (ADF_DEV-gated) rather than a bare `swift format lint`,
+      # so the shipped-library discipline — no force-unwrap / force-try, no locale-sensitive strtod —
+      # is enforced alongside the formatting gate. The toolchain ships swift-format; `.swift-version`
+      # pins 6.3.2.
+      - name: swift package lint
+        run: ADF_DEV=1 swift package lint
 
   test-macos:
     name: macOS (${{ matrix.config }})
@@ -34,7 +37,22 @@ jobs:
       - name: Build
         run: swift build -c ${{ matrix.config }}
       - name: Test
-        run: swift test -c ${{ matrix.config }}
+        run: swift test -c ${{ matrix.config }} --enable-code-coverage
+      # Report-only coverage summary (no threshold gate yet): surfaces line coverage of the shipped
+      # sources in the job log so a drop is visible in review. Best-effort — never fails the build.
+      - name: Coverage summary
+        if: matrix.config == 'debug'
+        run: |
+          BIN=$(swift build -c debug --show-bin-path)
+          PROF="$BIN/codecov/default.profdata"
+          XCTEST=$(find "$BIN" -maxdepth 1 -name '*.xctest' | head -1)
+          BINARY="$XCTEST/Contents/MacOS/$(basename "$XCTEST" .xctest)"
+          if [ -f "$PROF" ] && [ -f "$BINARY" ]; then
+            xcrun llvm-cov report "$BINARY" -instr-profile "$PROF" \
+              -ignore-filename-regex='Tests/|\.build/' || true
+          else
+            echo "coverage artifacts not found; skipping summary"
+          fi
 
   test-linux:
     name: Linux (${{ matrix.config }})
@@ -52,8 +70,54 @@ jobs:
       - name: Test
         run: swift test -c ${{ matrix.config }}
 
-  sanitizers:
-    name: Sanitizer (${{ matrix.sanitize }})
+  strict-warnings:
+    name: Warnings as errors (core tiers)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      # Treat warnings as errors for the zero-dependency tiers only. The `ADFoundation` umbrella pulls
+      # ADFCore / ADFIO / ADFText / ADFUnicode / ADFAtomics but not swift-syntax, so `-Xswiftc` can't
+      # fail the build on swift-syntax's own warnings (which we don't control). This stays a CI flag —
+      # never a package setting — so consumers' builds are never gated on a future toolchain's warnings.
+      - name: Build core tiers with -warnings-as-errors
+        run: swift build --target ADFoundation -Xswiftc -warnings-as-errors
+
+  strict-warnings-linux:
+    name: Warnings as errors (core tiers, Linux)
+    runs-on: ubuntu-latest
+    container: swift:6.3
+    steps:
+      - uses: actions/checkout@v4
+      # Same warnings-as-errors gate as macOS, but over the Glibc #else branches in ADFIO. Stays a CI
+      # flag, never a package setting, for the same reason documented on the macOS job.
+      - name: Build core tiers with -warnings-as-errors
+        run: swift build --target ADFoundation -Xswiftc -warnings-as-errors
+
+  tier-isolation:
+    name: Tier isolation (core tiers stay swift-syntax-free)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      # The package's defining invariant: the zero-dependency products (ADFCore / ADFUnicode /
+      # ADFText / ADFIO and the ADFoundation umbrella) must never transitively link swift-syntax, so
+      # the portable ADJSONCore and the apple-docs dylib keep clean resolution graphs. Build each in
+      # isolation and fail if swift-syntax ever gets compiled as part of it. (Only ADFMacroSupport,
+      # built separately, is allowed to.)
+      - name: Build each core product and assert no swift-syntax compilation
+        run: |
+          rm -rf .build
+          swift package resolve
+          for product in ADFCore ADFUnicode ADFText ADFIO ADFoundation; do
+            log=$(swift build --product "$product" 2>&1)
+            echo "$log"
+            if echo "$log" | grep -qiE 'Compiling (SwiftSyntax|SwiftParser|SwiftDiagnostics)'; then
+              echo "::error::$product transitively compiled swift-syntax — core tiers must stay swift-syntax-free"
+              exit 1
+            fi
+          done
+
+  sanitizers-macos:
+    name: Sanitizer macOS (${{ matrix.sanitize }})
     runs-on: macos-15
     strategy:
       fail-fast: false
@@ -63,3 +127,30 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test under ${{ matrix.sanitize }}Sanitizer
         run: swift test --sanitize=${{ matrix.sanitize }}
+
+  sanitizers-linux:
+    name: Sanitizer Linux (${{ matrix.sanitize }})
+    runs-on: ubuntu-latest
+    container: swift:6.3
+    strategy:
+      fail-fast: false
+      matrix:
+        # Address catches the Glibc-path pointer/mmap code; undefined covers the C11 atomics shim
+        # and pointer arithmetic. (Both pass locally on macOS; Linux exercises the #else branches.)
+        sanitize: [address, undefined]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test under ${{ matrix.sanitize }}Sanitizer
+        run: swift test --sanitize=${{ matrix.sanitize }}
+
+  dev-build:
+    name: Dev build (plugins, benchmarks, docs)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      # Compile the ADF_DEV-only graph (the LintBuild build-tool plugin and the ordo-one benchmark
+      # target) so it can't bitrot, then build the DocC archives so doc links can't silently break.
+      - name: Build dev targets
+        run: ADF_DEV=1 swift build
+      - name: Build documentation
+        run: ADF_DEV=1 swift package generate-documentation

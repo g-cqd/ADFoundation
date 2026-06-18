@@ -67,4 +67,25 @@ struct ValidateUTF8Tests {
     @Test func isValidConvenience() {
         #expect(UTF8Validation.firstInvalidByte(Array("ok ✓ string".utf8)) == nil)
     }
+
+    /// A first chunk that is already non-ASCII trips the density probe into the scalar path; the SIMD
+    /// entry point must still agree with the scalar reference, valid or corrupted.
+    @Test func denseMultibyteAgreesWithScalar() {
+        let dense = Array(String(repeating: "日", count: 40).utf8)  // all 3-byte sequences
+        #expect(UTF8Validation.firstInvalidByte(dense) == nil)
+        #expect(UTF8Validation.firstInvalidByte(dense) == UTF8Validation.firstInvalidByteScalar(dense))
+        var bad = dense
+        bad[7] = 0x00  // break a continuation byte
+        #expect(UTF8Validation.firstInvalidByte(bad) != nil)
+        #expect(UTF8Validation.firstInvalidByte(bad) == UTF8Validation.firstInvalidByteScalar(bad))
+    }
+
+    /// Inputs straddling the 16-byte SIMD threshold: 15 bytes uses scalar, 16 enters the vector path.
+    @Test func straddlesSimdThreshold() {
+        #expect(UTF8Validation.firstInvalidByte([UInt8](repeating: UInt8(ascii: "a"), count: 15)) == nil)
+        #expect(UTF8Validation.firstInvalidByte([UInt8](repeating: UInt8(ascii: "a"), count: 16)) == nil)
+        var fifteen = [UInt8](repeating: UInt8(ascii: "a"), count: 15)
+        fifteen[14] = 0x80  // lone continuation at the end
+        #expect(UTF8Validation.firstInvalidByte(fifteen) == 14)
+    }
 }

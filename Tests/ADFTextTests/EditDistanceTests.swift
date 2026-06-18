@@ -90,6 +90,31 @@ struct EditDistanceTests {
         #expect(failures == 0)
     }
 
+    /// Edit distance is symmetric; the internal min-orientation must preserve that for both the
+    /// unbounded and the bounded contract.
+    @Test func isSymmetric() {
+        var rng = LCG(seed: 0xABCD_1234_5678_9F01)
+        for _ in 0..<500 {
+            let a = (0..<rng.int(40)).map { _ in UInt8(97 + rng.int(4)) }
+            let b = (0..<rng.int(40)).map { _ in UInt8(97 + rng.int(4)) }
+            #expect(ADFText.editDistance(a, b) == ADFText.editDistance(b, a))
+            for k in [0, 1, 3, 10] {
+                #expect(
+                    ADFText.editDistance(a, b, maxDistance: k) == ADFText.editDistance(b, a, maxDistance: k))
+            }
+        }
+    }
+
+    /// `m == 1` against a large `n` drives the min-orientation + temporary-allocation row sizing.
+    @Test func highlyAsymmetricInputs() {
+        let one: [UInt8] = [UInt8(ascii: "x")]
+        let manyY = [UInt8](repeating: UInt8(ascii: "y"), count: 5000)
+        let manyX = [UInt8](repeating: UInt8(ascii: "x"), count: 5000)
+        #expect(ADFText.editDistance(one, manyY) == 5000)  // 1 substitution + 4999 insertions
+        #expect(ADFText.editDistance(manyY, one) == 5000)  // symmetric
+        #expect(ADFText.editDistance(one, manyX) == 4999)  // one 'x' matches; 4999 insertions
+    }
+
     /// The pure functions are safe to fan out concurrently (no shared state).
     @Test func concurrentCallsAgree() async {
         let pairs: [(String, String)] = [

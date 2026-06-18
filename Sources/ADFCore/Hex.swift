@@ -19,4 +19,11 @@ public enum Hex {
     public static func digit(_ nibble: UInt8) -> UInt8 {
         nibble < 10 ? 0x30 + nibble : 0x61 + (nibble - 10)
     }
+
+    /// Encodes a nibble (0–15) to its uppercase ASCII hex digit — the form RFC 3986 §2.1 recommends
+    /// for percent-encoding. Input above 15 is a programmer error.
+    @inlinable
+    public static func upperDigit(_ nibble: UInt8) -> UInt8 {
+        nibble < 10 ? 0x30 + nibble : 0x41 + (nibble - 10)
+    }
 }

@@ -42,6 +42,46 @@
         return Double(bitPattern: UInt64(littleEndian: bits))
     }
 
+    @inline(__always)
+    public mutating func u8() -> UInt8? {
+        guard remaining >= 1, let base = unsafe buf.baseAddress else { return nil }
+        let value = unsafe base.loadUnaligned(fromByteOffset: offset, as: UInt8.self)
+        offset += 1
+        return value
+    }
+
+    @inline(__always)
+    public mutating func u16() -> UInt16? {
+        guard remaining >= 2, let base = unsafe buf.baseAddress else { return nil }
+        let value = unsafe base.loadUnaligned(fromByteOffset: offset, as: UInt16.self)
+        offset += 2
+        return UInt16(littleEndian: value)
+    }
+
+    @inline(__always)
+    public mutating func u16be() -> UInt16? {
+        guard remaining >= 2, let base = unsafe buf.baseAddress else { return nil }
+        let value = unsafe base.loadUnaligned(fromByteOffset: offset, as: UInt16.self)
+        offset += 2
+        return UInt16(bigEndian: value)
+    }
+
+    @inline(__always)
+    public mutating func u32be() -> UInt32? {
+        guard remaining >= 4, let base = unsafe buf.baseAddress else { return nil }
+        let value = unsafe base.loadUnaligned(fromByteOffset: offset, as: UInt32.self)
+        offset += 4
+        return UInt32(bigEndian: value)
+    }
+
+    @inline(__always)
+    public mutating func u64be() -> UInt64? {
+        guard remaining >= 8, let base = unsafe buf.baseAddress else { return nil }
+        let value = unsafe base.loadUnaligned(fromByteOffset: offset, as: UInt64.self)
+        offset += 8
+        return UInt64(bigEndian: value)
+    }
+
     /// A no-copy view over the next `count` bytes, or `nil` if out of bounds.
     @inline(__always)
     public mutating func bytes(_ count: Int) -> UnsafeRawBufferPointer? {
@@ -58,6 +98,15 @@
         let pad = (8 - (offset % 8)) % 8
         guard remaining >= pad else { return false }
         offset += pad
+        return true
+    }
+
+    /// Advances past `count` bytes, returning `false` (and leaving `offset` unchanged) if fewer
+    /// remain or `count` is negative — the same no-trap contract as the typed reads.
+    @inline(__always)
+    public mutating func skip(_ count: Int) -> Bool {
+        guard count >= 0, remaining >= count else { return false }
+        offset += count
         return true
     }
 }

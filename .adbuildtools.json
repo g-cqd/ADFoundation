@@ -7,5 +7,8 @@
         "Sources/ADFIO",
         "Sources/ADFoundation"
     ],
-    "strtodBan": true
+    "strtodBan": true,
+    "prngBan": true,
+    "untypedThrowsBan": true,
+    "wallClockBan": true
 }

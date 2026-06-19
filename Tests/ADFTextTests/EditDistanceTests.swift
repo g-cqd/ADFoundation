@@ -1,16 +1,10 @@
 import ADFText
+import ADTestKit
 import Testing
 
-/// Deterministic generator so the randomized cross-checks are reproducible.
-private struct LCG {
-    var state: UInt64
-    init(seed: UInt64) { state = seed }
-    mutating func next() -> UInt64 {
-        state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
-        return state >> 16
-    }
-    mutating func int(_ upperBound: Int) -> Int { Int(next() % UInt64(upperBound)) }
-}
+// The randomized cross-checks use the shared `ADTestKit.SeededRNG` (its `int(_:)` has the
+// same contract as the old local `LCG`). These are property tests — banded == full, and
+// symmetry — so they hold under any deterministic seeded stream; the seeds are preserved.
 
 @Suite("ADFText.editDistance")
 struct EditDistanceTests {
@@ -73,7 +67,7 @@ struct EditDistanceTests {
     /// Long inputs (rows past the banded dispatch threshold), so the adaptive path actually selects
     /// the banded matrix; checked against the full matrix for several bounds.
     @Test func bandedMatchesFullOnLongInputs() {
-        var rng = LCG(seed: 0x9E37_79B9_7F4A_7C15)
+        var rng = SeededRNG(seed: 0x9E37_79B9_7F4A_7C15)
         var failures = 0
         for _ in 0 ..< 400 {
             let length = 16 + rng.int(96)  // 16…111, straddles the bandedMinRowWidth threshold
@@ -93,7 +87,7 @@ struct EditDistanceTests {
     /// Edit distance is symmetric; the internal min-orientation must preserve that for both the
     /// unbounded and the bounded contract.
     @Test func isSymmetric() {
-        var rng = LCG(seed: 0xABCD_1234_5678_9F01)
+        var rng = SeededRNG(seed: 0xABCD_1234_5678_9F01)
         for _ in 0 ..< 500 {
             let a = (0 ..< rng.int(40)).map { _ in UInt8(97 + rng.int(4)) }
             let b = (0 ..< rng.int(40)).map { _ in UInt8(97 + rng.int(4)) }

@@ -1,4 +1,4 @@
-// swift-tools-version: 6.3
+// swift-tools-version: 6.4
 import PackageDescription
 
 // Strict, dependency-safe settings applied to every Swift target. `.v6` turns on complete
@@ -68,6 +68,15 @@ if isDev {
     // resolve it.
     packageDependencies.append(
         .package(url: "https://github.com/ordo-one/benchmark", from: "1.4.0"))
+    // ADTestKit — the shared AD-family testing architecture (SeededRNG, Fuzz, oracles, async/time
+    // tools). Test-only and dev-gated, so packages depending on ADFoundation never resolve it.
+    // Local checkout via `ADTESTKIT_PATH`, otherwise the published `main`.
+    if let path = Context.environment["ADTESTKIT_PATH"], !path.isEmpty {
+        packageDependencies.append(.package(path: path))
+    } else {
+        packageDependencies.append(
+            .package(url: "https://github.com/g-cqd/ADTestKit.git", branch: "main"))
+    }
 }
 
 // Build-time formatting enforcement attaches to the libraries only in dev/CI. A build-tool plugin on
@@ -166,6 +175,13 @@ let package = Package(
 // (full / banded / adaptive) and UTF-8 validation (scalar / SIMD) — across input sizes, so the
 // dispatch thresholds stay benchmark-backed. Runs via `ADF_DEV=1 swift package benchmark`.
 if isDev {
+    // Wire the dev-only ADTestKit into the test targets that use the shared `SeededRNG`
+    // (downstream consumers never see it): the edit-distance cross-checks (ADFText) and the
+    // UTF-8 SIMD-vs-scalar parity fuzz (ADFCore).
+    let adTestKit: Target.Dependency = .product(name: "ADTestKit", package: "ADTestKit")
+    for name in ["ADFTextTests", "ADFCoreTests"] {
+        package.targets.first { $0.name == name }?.dependencies.append(adTestKit)
+    }
     package.targets.append(
         .executableTarget(
             name: "ADFoundationSuite",

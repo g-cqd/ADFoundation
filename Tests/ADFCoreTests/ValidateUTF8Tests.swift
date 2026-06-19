@@ -1,15 +1,6 @@
 import ADFCore
+import ADTestKit
 import Testing
-
-private struct LCG {
-    var state: UInt64
-    init(seed: UInt64) { state = seed }
-    mutating func next() -> UInt64 {
-        state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
-        return state >> 16
-    }
-    mutating func int(_ upperBound: Int) -> Int { Int(next() % UInt64(upperBound)) }
-}
 
 @Suite("UTF8Validation.firstInvalidByte")
 struct ValidateUTF8Tests {
@@ -46,7 +37,7 @@ struct ValidateUTF8Tests {
     /// The SIMD path must return the same offset (or nil) as the scalar reference for every input —
     /// valid mixed UTF-8 of varied length, with occasional byte corruption.
     @Test func simdMatchesScalarFuzzed() {
-        var rng = LCG(seed: 0xD1B5_4A32_D192_ED03)
+        var rng = SeededRNG(seed: 0xD1B5_4A32_D192_ED03)
         let pool: [UInt32] = [0x41, 0x7A, 0x20, 0x09, 0x00E9, 0x20AC, 0x65E5, 0x1F600]  // a z sp tab é € 日 😀
         var mismatches = 0
         for _ in 0 ..< 3000 {

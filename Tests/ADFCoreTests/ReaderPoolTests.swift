@@ -32,7 +32,7 @@ struct ByteReaderTests {
             let oob = reader.bytes(5)  // out of bounds
             let view = reader.bytes(3)
             #expect(oob == nil)
-            #expect(view?.count == 3)
+            #expect(view.map { Array($0) } == [10, 20, 30])  // the right 3 bytes, not merely 3 of them
             #expect(reader.remaining == 1)
         }
     }

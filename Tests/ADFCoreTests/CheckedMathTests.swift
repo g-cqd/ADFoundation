@@ -1,7 +1,6 @@
 import ADFCore
 import Testing
 
-@Suite("CheckedMath")
 struct CheckedMathTests {
     @Test func addingWithinBoundsReturnsSum() {
         #expect((2 as Int).checkedAdding(3) == 5)

@@ -2,7 +2,6 @@ import ADFCore
 import ADTestKit
 import Testing
 
-@Suite("UTF8Validation.firstInvalidByte")
 struct ValidateUTF8Tests {
     @Test func acceptsWellFormed() {
         let samples = [

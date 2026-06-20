@@ -1,7 +1,6 @@
 import ADFCore
 import Testing
 
-@Suite("ByteReader")
 struct ByteReaderTests {
     @Test func readsLittleEndianScalarsThenSignalsEnd() {
         var bytes: [UInt8] = []
@@ -133,7 +132,6 @@ struct ByteReaderTests {
     }
 }
 
-@Suite("ByteBufferPool")
 struct ByteBufferPoolTests {
     @Test func emptyPoolYieldsFreshBuffer() {
         let pool = ByteBufferPool()

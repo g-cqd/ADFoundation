@@ -1,7 +1,6 @@
 import ADFCore
 import Testing
 
-@Suite("UTF8Decode")
 struct UTF8DecodeTests {
     private func decode(_ bytes: [UInt8], at i: Int = 0) -> (value: UInt32, width: Int) {
         UTF8Decode.scalar(bytes, at: i, count: bytes.count)

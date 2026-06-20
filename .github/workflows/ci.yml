@@ -30,6 +30,7 @@ jobs:
       dev-env-var: ADF_DEV
       enable-sanitizers: true
       sanitizers: "address thread"
+      enable-coverage: true
       enable-docs: true
       docs-target: ADFoundation
 

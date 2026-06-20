@@ -1,7 +1,6 @@
 import ADFCore
 import Testing
 
-@Suite("Varint")
 struct VarintTests {
     @Test func roundTripAcrossArrayReader() {
         for v in [UInt64(0), 1, 127, 128, 300, 16384, 1 << 35, UInt64.max] {
@@ -66,7 +65,6 @@ struct VarintTests {
     }
 }
 
-@Suite("Endian")
 struct EndianTests {
     @Test func littleAndBigEndianLoads() {
         let bytes: [UInt8] = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]

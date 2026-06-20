@@ -1,7 +1,6 @@
 import ADFCore
 import Testing
 
-@Suite("Hex")
 struct HexTests {
     @Test func decodesDigits() {
         #expect(Hex.value(UInt8(ascii: "0")) == 0)
@@ -26,7 +25,6 @@ struct HexTests {
     }
 }
 
-@Suite("ASCII")
 struct ASCIITests {
     @Test func byteClassification() {
         #expect(ASCII.isDigit(UInt8(ascii: "5")))
@@ -50,7 +48,6 @@ struct ASCIITests {
     }
 }
 
-@Suite("UTF8Validation")
 struct UTF8ValidationTests {
     private func seqLen(_ bytes: [UInt8]) -> Int? {
         bytes.withUnsafeBufferPointer { buf in

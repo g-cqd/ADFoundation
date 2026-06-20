@@ -1,7 +1,6 @@
 import ADFMetrics
 import Testing
 
-@Suite("ProcessProbe")
 struct ProcessProbeTests {
     @Test func snapshotPopulatesLiveCounters() {
         let s = ProcessProbe.snapshot()

@@ -6,7 +6,6 @@ import Testing
 // same contract as the old local `LCG`). These are property tests — banded == full, and
 // symmetry — so they hold under any deterministic seeded stream; the seeds are preserved.
 
-@Suite("ADFText.editDistance")
 struct EditDistanceTests {
     private func dist(_ a: String, _ b: String, max: Int = .max) -> Int {
         ADFText.editDistance(Array(a.utf8), Array(b.utf8), maxDistance: max)

@@ -1,7 +1,6 @@
 import ADFCore
 import Testing
 
-@Suite("PercentCoding")
 struct PercentCodingTests {
     private func bytes(_ s: String) -> [UInt8] { Array(s.utf8) }
     private func string(_ b: [UInt8]) -> String { String(decoding: b, as: UTF8.self) }

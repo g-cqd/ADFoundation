@@ -54,7 +54,7 @@ public enum Varint {
     /// `[UInt8]` overload (bounds-checked) for callers decoding from arrays. Delegates to the
     /// raw-buffer reader so the decode and overflow logic has a single home.
     public static func read(_ bytes: [UInt8], _ offset: inout Int) -> UInt64? {
-        unsafe bytes.withUnsafeBytes { unsafe read($0, &offset) }
+        bytes.withUnsafeBytes { unsafe read($0, &offset) }
     }
 
     /// Maps a signed integer to an unsigned varint-friendly value (small magnitudes ⇒ short codes).

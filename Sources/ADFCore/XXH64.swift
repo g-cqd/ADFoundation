@@ -88,6 +88,6 @@ public enum XXH64 {
 
     @inlinable
     public static func hash(_ bytes: [UInt8], seed: UInt64 = 0) -> UInt64 {
-        unsafe bytes.withUnsafeBytes { unsafe hash($0, seed: seed) }
+        bytes.withUnsafeBytes { unsafe hash($0, seed: seed) }
     }
 }

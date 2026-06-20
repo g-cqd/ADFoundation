@@ -119,11 +119,11 @@ public enum UTF8Validation {
 
     /// `[UInt8]` convenience for ``firstInvalidByte(_:)``.
     public static func firstInvalidByte(_ bytes: [UInt8]) -> Int? {
-        unsafe bytes.withUnsafeBytes { unsafe firstInvalidByte($0) }
+        bytes.withUnsafeBytes { unsafe firstInvalidByte($0) }
     }
 
     /// `[UInt8]` convenience for ``firstInvalidByteScalar(_:)``.
     public static func firstInvalidByteScalar(_ bytes: [UInt8]) -> Int? {
-        unsafe bytes.withUnsafeBytes { unsafe firstInvalidByteScalar($0) }
+        bytes.withUnsafeBytes { unsafe firstInvalidByteScalar($0) }
     }
 }

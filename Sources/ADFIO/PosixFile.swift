@@ -32,7 +32,7 @@ public final class PosixFile: @unchecked Sendable {
                 flags = O_RDWR | O_CLOEXEC
                 if create { flags |= O_CREAT }
         }
-        let fd = unsafe path.withCString { unsafe open($0, flags, 0o644) }
+        let fd = path.withCString { unsafe open($0, flags, 0o644) }
         guard fd >= 0 else { throw ioErrno("open(\(path))") }
         self.fileDescriptor = fd
         self.closeOnDeinit = true
@@ -113,7 +113,7 @@ public final class PosixFile: @unchecked Sendable {
             // Build the iovec batch in scratch storage (stack for typical fan-out, heap for large)
             // instead of allocating a fresh `[iovec]` per batch. `iovec` is trivial, so the temporary
             // needs no explicit deinitialization.
-            let n = unsafe withUnsafeTemporaryAllocation(of: iovec.self, capacity: count) { iov -> Int in
+            let n = withUnsafeTemporaryAllocation(of: iovec.self, capacity: count) { iov -> Int in
                 for k in 0 ..< count {
                     let buf = unsafe buffers[index + k]
                     unsafe iov.initializeElement(

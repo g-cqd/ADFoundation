@@ -58,7 +58,7 @@ jobs:
     name: Linux (${{ matrix.config }})
     runs-on: ubuntu-latest
     # Pin to the toolchain in `.swift-version`. Adjust the tag if the runner image lags.
-    container: swift:6.3
+    container: swiftlang/swift:nightly-6.4-jammy
     strategy:
       fail-fast: false
       matrix:
@@ -85,7 +85,7 @@ jobs:
   strict-warnings-linux:
     name: Warnings as errors (core tiers, Linux)
     runs-on: ubuntu-latest
-    container: swift:6.3
+    container: swiftlang/swift:nightly-6.4-jammy
     steps:
       - uses: actions/checkout@v4
       # Same warnings-as-errors gate as macOS, but over the Glibc #else branches in ADFIO. Stays a CI
@@ -131,7 +131,7 @@ jobs:
   sanitizers-linux:
     name: Sanitizer Linux (${{ matrix.sanitize }})
     runs-on: ubuntu-latest
-    container: swift:6.3
+    container: swiftlang/swift:nightly-6.4-jammy
     strategy:
       fail-fast: false
       matrix:

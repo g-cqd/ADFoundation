@@ -26,7 +26,7 @@ extension IOError: CustomStringConvertible {
         // static buffer (as plain `strerror` would). Darwin and Glibc expose different `strerror_r`
         // contracts, handled explicitly below; the buffer is zero-initialized first so no branch can
         // ever read uninitialized stack memory.
-        let detail = unsafe withUnsafeTemporaryAllocation(of: CChar.self, capacity: 256) { buffer in
+        let detail = withUnsafeTemporaryAllocation(of: CChar.self, capacity: 256) { buffer in
             guard let base = buffer.baseAddress else { return "errno \(errno)" }
             unsafe base.initialize(repeating: 0, count: buffer.count)
             #if canImport(Darwin)

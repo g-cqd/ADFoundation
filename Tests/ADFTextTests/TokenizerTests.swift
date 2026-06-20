@@ -1,7 +1,6 @@
 import ADFText
 import Testing
 
-@Suite("ADFText.Tokenizer")
 struct TokenizerTests {
     private func windowStrings(_ s: String, _ size: Int) -> [String] {
         let b = Array(s.utf8)

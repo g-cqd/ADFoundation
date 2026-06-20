@@ -5,7 +5,6 @@ import Testing
 private func scalars(_ s: String) -> [Unicode.Scalar] { Array(s.unicodeScalars) }
 private func values(_ s: [Unicode.Scalar]) -> [UInt32] { s.map(\.value) }
 
-@Suite("NFD")
 struct NFDTests {
     @Test func decomposesLatinPrecomposed() {
         #expect(values(NFD.decompose(scalars("é"))) == [0x65, 0x301])  // e + combining acute
@@ -45,7 +44,6 @@ struct NFDTests {
     }
 }
 
-@Suite("CaseFolding")
 struct CaseFoldingTests {
     @Test func lowercasesASCII() {
         #expect(values(CaseFolding.lowercase(scalars("HELLO World 123"))) == values(scalars("hello world 123")))
@@ -71,7 +69,6 @@ struct CaseFoldingTests {
     }
 }
 
-@Suite("UnicodeSets")
 struct UnicodeSetsTests {
     @Test func jsWhitespaceBinarySearchBoundaries() {
         #expect(!UnicodeSets.isJsWhitespace(0x8))  // just below the first range (0x9…0xD)

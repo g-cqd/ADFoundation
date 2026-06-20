@@ -1,7 +1,6 @@
 import ADFCore
 import Testing
 
-@Suite("XXH64")
 struct XXH64Tests {
     @Test func emptyInputKnownVector() {
         // Canonical xxHash64 of the empty input with seed 0.
@@ -29,7 +28,6 @@ struct XXH64Tests {
     }
 }
 
-@Suite("ByteCompare")
 struct ByteCompareTests {
     private func equal(_ a: [UInt8], _ b: [UInt8]) -> Bool {
         guard a.count == b.count else { return false }

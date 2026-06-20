@@ -74,6 +74,35 @@ extension UnsafeMutableRawBufferPointer {
     }
 }
 
+// MARK: - Append-form little-endian stores for a growing [UInt8]
+
+// Wire- and disk-format builders assemble bytes by *appending* to a `[UInt8]` (a response frame, a
+// packed quantizer record), not by storing into a pre-sized buffer at an offset. These helpers append
+// the little-endian byte sequence of `value` in a single bounded copy of the byte-swapped scalar's
+// in-memory representation — which is little-endian on every host (the swap happens on a big-endian
+// host), so the appended bytes are identical regardless of CPU endianness. One canonical encoder
+// replaces the hand-rolled per-shift `append` loops (e.g. eight `append`s per `UInt64`) the consumers
+// otherwise re-roll. Concrete `[UInt8]` (not a generic `RangeReplaceableCollection`) so the contiguous
+// `append(contentsOf:)` fast path is the only lowering — the same reason the number/byte kernels here
+// stay concrete.
+extension Array where Element == UInt8 {
+    @inlinable
+    public mutating func appendLE16(_ value: UInt16) {
+        var le = value.littleEndian
+        Swift.withUnsafeBytes(of: &le) { unsafe append(contentsOf: $0) }
+    }
+    @inlinable
+    public mutating func appendLE32(_ value: UInt32) {
+        var le = value.littleEndian
+        Swift.withUnsafeBytes(of: &le) { unsafe append(contentsOf: $0) }
+    }
+    @inlinable
+    public mutating func appendLE64(_ value: UInt64) {
+        var le = value.littleEndian
+        Swift.withUnsafeBytes(of: &le) { unsafe append(contentsOf: $0) }
+    }
+}
+
 // MARK: - Span parallels
 
 // The `RawSpan` / `MutableRawSpan` parallels of the buffer-pointer helpers above, for callers

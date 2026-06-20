@@ -41,4 +41,17 @@ struct PercentCodingTests {
         // RFC 3986 percent-decoding does not map '+' to space; that is the form-urlencoded rule.
         #expect(PercentCoding.decode(bytes("a+b")) == bytes("a+b"))
     }
+
+    @Test func decodeFormMapsPlusToSpace() {
+        // application/x-www-form-urlencoded: a literal '+' becomes a space, but an escaped %2B stays
+        // a literal '+'. Triples decode as usual.
+        #expect(PercentCoding.decodeForm(bytes("a+b")) == bytes("a b"))
+        #expect(PercentCoding.decodeForm(bytes("a%2Bb")) == bytes("a+b"))
+        #expect(PercentCoding.decodeForm(bytes("x+y%20z")) == bytes("x y z"))
+        // Still rejects malformed escapes (the no-trap nil contract the safe call site relies on).
+        #expect(PercentCoding.decodeForm(bytes("%G0")) == nil)
+        #expect(PercentCoding.decodeForm(bytes("ok%2")) == nil)
+        // Regression guard: plain decode keeps '+' literal even after the shared core refactor.
+        #expect(PercentCoding.decode(bytes("a+b")) == bytes("a+b"))
+    }
 }

@@ -9,10 +9,10 @@ import Benchmark
 // (`ADFText.bandedMinRowWidth`, `UTF8Validation.simdMinBytes`).
 
 private func nearStrings(_ n: Int, edits k: Int) -> (a: [UInt8], b: [UInt8]) {
-    let a = (0..<n).map { UInt8(97 + ($0 % 5)) }
+    let a = (0 ..< n).map { UInt8(97 + ($0 % 5)) }
     var b = a
     let stride = Swift.max(1, n / Swift.max(k, 1))
-    for e in 0..<k {
+    for e in 0 ..< k {
         let i = (e * stride) % n
         b[i] = b[i] == 122 ? 97 : b[i] &+ 1
     }
@@ -25,6 +25,72 @@ private func mixedBytes(_ n: Int) -> [UInt8] {
     var out: [UInt8] = []
     let unit = Array("aé本x".utf8)
     while out.count < n { out += unit }
+    return out
+}
+
+// The allocating shape `NumberParse.doublePrefix` had before it was consolidated onto the shared
+// `DecimalFloat` Clinger kernel: ~5 heap arrays + a `String` + `Double(String)` per call. Kept only to
+// benchmark the new allocation-free path against it side by side (like the edit-distance variants), so
+// the wall-clock speedup and the `.mallocCountTotal` drop are both visible in one report.
+private func naiveDoublePrefix(_ s: [UInt8]) -> Double? {
+    var t = s[...]
+    func isWS(_ b: UInt8) -> Bool { b == 0x20 || (b >= 0x09 && b <= 0x0D) }
+    while let f = t.first, isWS(f) { t = t.dropFirst() }
+    var captured: [UInt8] = []
+    if let f = t.first, f == 0x2B || f == 0x2D {
+        if f == 0x2D { captured.append(f) }
+        t = t.dropFirst()
+    }
+    var intDigits: [UInt8] = []
+    while let b = t.first, b >= 0x30, b <= 0x39 {
+        intDigits.append(b)
+        t = t.dropFirst()
+    }
+    var frac: [UInt8] = []
+    if t.first == 0x2E {
+        t = t.dropFirst()
+        while let b = t.first, b >= 0x30, b <= 0x39 {
+            frac.append(b)
+            t = t.dropFirst()
+        }
+    }
+    guard !(intDigits.isEmpty && frac.isEmpty) else { return nil }
+    captured.append(contentsOf: intDigits.isEmpty ? [0x30] : intDigits)
+    if !frac.isEmpty {
+        captured.append(0x2E)
+        captured.append(contentsOf: frac)
+    }
+    return Double(String(decoding: captured, as: UTF8.self))
+}
+
+// The per-shift `append` loop the wire/disk framers hand-rolled before consolidating onto the
+// `appendLE*` single-copy helpers — eight bounds-checked `append`s per `UInt64`. Kept only to
+// benchmark the consolidated path against it side by side, so the wall-clock win is visible in one
+// report (the malloc profile is held flat by `reserveCapacity` in both arms).
+private func naiveAppendLE64(_ value: UInt64, to out: inout [UInt8]) {
+    var shifted = value
+    for _ in 0 ..< 8 {
+        out.append(UInt8(truncatingIfNeeded: shifted))
+        shifted >>= 8
+    }
+}
+
+// The per-`Character` `String +=` escaper the SVG/XML builders hand-rolled before consolidating onto
+// the byte-level `XMLEscape`. Foundation-free (no `replacingOccurrences`), kept only to benchmark the
+// consolidated path against it side by side (wall-clock + `.mallocCountTotal`).
+private func naiveXMLEscape(_ s: String) -> String {
+    var out = ""
+    out.reserveCapacity(s.count)
+    for ch in s {
+        switch ch {
+            case "&": out += "&amp;"
+            case "<": out += "&lt;"
+            case ">": out += "&gt;"
+            case "\"": out += "&quot;"
+            case "'": out += "&apos;"
+            default: out.append(ch)
+        }
+    }
     return out
 }
 
@@ -94,7 +160,7 @@ nonisolated(unsafe) let benchmarks = {
 
     // Build a run of varints two ways: the reserve+append array form vs. the exclusively-owned
     // OutputSpan form. Both should allocate exactly once; the benchmark guards that invariant.
-    let varintValues: [UInt64] = (0..<256).map { UInt64($0) &* 2_654_435_761 }
+    let varintValues: [UInt64] = (0 ..< 256).map { UInt64($0) &* 2_654_435_761 }
     let varintCapacity = varintValues.count * Varint.maxEncodedLength
     Benchmark("cow/varint-build array", configuration: cowMetrics) { bm in
         for _ in bm.scaledIterations {
@@ -111,5 +177,69 @@ nonisolated(unsafe) let benchmarks = {
             }
             blackHole(out.count)
         }
+    }
+
+    // MARK: endian append — the single bounded-copy `appendLE64` vs the per-shift `append` loop the
+    // framers hand-rolled (eight `append`s per UInt64). cowMetrics so the allocation profile stays
+    // flat (one amortized growth, reserved up front in both arms) while the wall-clock win shows.
+    let endianValues: [UInt64] = (0 ..< 256).map { UInt64($0) &* 0x9E37_79B9_7F4A_7C15 }
+    let endianCapacity = endianValues.count * 8
+    Benchmark("endian/appendLE64 new", configuration: cowMetrics) { bm in
+        for _ in bm.scaledIterations {
+            var out: [UInt8] = []
+            out.reserveCapacity(endianCapacity)
+            for v in endianValues { out.appendLE64(v) }
+            blackHole(out.count)
+        }
+    }
+    Benchmark("endian/appendLE64 naive(old)", configuration: cowMetrics) { bm in
+        for _ in bm.scaledIterations {
+            var out: [UInt8] = []
+            out.reserveCapacity(endianCapacity)
+            for v in endianValues { naiveAppendLE64(v, to: &out) }
+            blackHole(out.count)
+        }
+    }
+
+    // MARK: XML escaping — the byte-level `XMLEscape` (one result allocation) vs the per-`Character`
+    // `String +=` escaper the SVG/XML builders hand-rolled. cowMetrics guards the allocation profile
+    // (the safe-run arm is one alloc) alongside the wall-clock win on mixed input.
+    let xmlSafe = String(repeating: "UIView.layoutMarginsGuide ", count: 8)
+    let xmlMixed = String(repeating: "a<b> & \"c\" 'd' ", count: 8)
+    Benchmark("xml/escape safe", configuration: cowMetrics) { bm in
+        for _ in bm.scaledIterations { blackHole(XMLEscape.escaped(xmlSafe)) }
+    }
+    Benchmark("xml/escape mixed new", configuration: cowMetrics) { bm in
+        for _ in bm.scaledIterations { blackHole(XMLEscape.escaped(xmlMixed)) }
+    }
+    Benchmark("xml/escape mixed naive(old)", configuration: cowMetrics) { bm in
+        for _ in bm.scaledIterations { blackHole(naiveXMLEscape(xmlMixed)) }
+    }
+
+    // MARK: number parsing — the allocation-free Clinger fast path (the `DecimalFloat` kernel shared
+    // with ADJSON's tape parser) vs the allocating shape it replaced, side by side. `.mallocCountTotal`
+    // makes the win concrete: the new path allocates nothing on the fast path, the old made roughly one
+    // heap allocation per intermediate array/string per call.
+    let numberInputs = ["0.65", "123.456", "42", "-2.5", "1000000", "0.7"].map { Array($0.utf8) }
+    Benchmark("number/doublePrefix new", configuration: cowMetrics) { bm in
+        for _ in bm.scaledIterations { for s in numberInputs { blackHole(NumberParse.doublePrefix(s)) } }
+    }
+    Benchmark("number/doublePrefix naive(old)", configuration: cowMetrics) { bm in
+        for _ in bm.scaledIterations { for s in numberInputs { blackHole(naiveDoublePrefix(s)) } }
+    }
+    let intInputs = ["42", "-7", "1000000", "16", "255"].map { Array($0.utf8) }
+    Benchmark("number/intPrefix", configuration: cowMetrics) { bm in
+        for _ in bm.scaledIterations { for s in intInputs { blackHole(NumberParse.intPrefix(s)) } }
+    }
+
+    // MARK: base64 — encode/decode of a 32-byte SHA-256 digest (the SRI `sha256-…` token path). The
+    // cowMetrics config guards the single-allocation OutputSpan build against a regression.
+    let digest = [UInt8](repeating: 0xAB, count: 32)
+    let digestBase64 = Base64.encode(digest)
+    Benchmark("base64/encode 32B", configuration: cowMetrics) { bm in
+        for _ in bm.scaledIterations { blackHole(Base64.encode(digest)) }
+    }
+    Benchmark("base64/decode 32B", configuration: cowMetrics) { bm in
+        for _ in bm.scaledIterations { blackHole(Base64.decode(digestBase64)) }
     }
 }

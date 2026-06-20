@@ -88,6 +88,49 @@ struct EndianTests {
         }
     }
 
+    @Test func appendFormProducesLittleEndianBytes() {
+        // The append helpers emit the canonical little-endian byte sequence (LSB first), the golden
+        // the wire/disk builders depend on.
+        var out: [UInt8] = []
+        out.appendLE16(0x0201)
+        out.appendLE32(0x0605_0403)
+        out.appendLE64(0x0E0D_0C0B_0A09_0807)
+        let expected: [UInt8] = [
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E
+        ]
+        #expect(out == expected)
+    }
+
+    @Test func appendFormMatchesBufferStores() {
+        // The append helpers must emit bytes identical to the store-at-offset helpers, so a builder
+        // that mixes the two forms (a frame header patched in place, then cells appended) stays coherent.
+        let cases: [(UInt16, UInt32, UInt64)] = [
+            (0, 0, 0),
+            (0xBEEF, 0xDEAD_BEEF, 0x0102_0304_0506_0708),
+            (0xFFFF, 0xFFFF_FFFF, 0xFFFF_FFFF_FFFF_FFFF),
+            (1, 0x00AB_CDEF, 0x00FF_00FF_00FF_00FF)
+        ]
+        for (v16, v32, v64) in cases {
+            var viaAppend: [UInt8] = []
+            viaAppend.appendLE16(v16)
+            viaAppend.appendLE32(v32)
+            viaAppend.appendLE64(v64)
+            var viaStore = [UInt8](repeating: 0, count: 14)
+            viaStore.withUnsafeMutableBytes { raw in
+                raw.storeLE16(v16, at: 0)
+                raw.storeLE32(v32, at: 2)
+                raw.storeLE64(v64, at: 6)
+            }
+            #expect(viaAppend == viaStore)
+            // Round-trip through the immutable loads recovers the values.
+            viaAppend.withUnsafeBytes { raw in
+                #expect(raw.loadLE16(0) == v16)
+                #expect(raw.loadLE32(2) == v32)
+                #expect(raw.loadLE64(6) == v64)
+            }
+        }
+    }
+
     @Test func loadsAndStoresAtNonZeroOffset() {
         var bytes = [UInt8](repeating: 0, count: 16)
         bytes.withUnsafeMutableBytes { raw in

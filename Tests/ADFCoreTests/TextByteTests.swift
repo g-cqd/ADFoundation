@@ -3,14 +3,19 @@ import Testing
 
 struct HexTests {
     @Test func decodesDigits() {
-        #expect(Hex.value(UInt8(ascii: "0")) == 0)
-        #expect(Hex.value(UInt8(ascii: "9")) == 9)
-        #expect(Hex.value(UInt8(ascii: "a")) == 10)
-        #expect(Hex.value(UInt8(ascii: "f")) == 15)
-        #expect(Hex.value(UInt8(ascii: "A")) == 10)
-        #expect(Hex.value(UInt8(ascii: "F")) == 15)
-        #expect(Hex.value(UInt8(ascii: "g")) == nil)
-        #expect(Hex.value(UInt8(ascii: " ")) == nil)
+        // A typed (input, expected) table looped once, rather than eight separate `#expect`s — each
+        // inline `Hex.value(UInt8(ascii:)) == <literal>/nil` makes the type-checker re-solve the
+        // optional-comparison overload, and eight of them pushed this body past the 100ms budget
+        // (hard error under the test settings). The explicit `[(UInt8, UInt8?)]` collapses it to one.
+        let cases: [(input: UInt8, expected: UInt8?)] = [
+            (UInt8(ascii: "0"), 0), (UInt8(ascii: "9"), 9),
+            (UInt8(ascii: "a"), 10), (UInt8(ascii: "f"), 15),
+            (UInt8(ascii: "A"), 10), (UInt8(ascii: "F"), 15),
+            (UInt8(ascii: "g"), nil), (UInt8(ascii: " "), nil)
+        ]
+        for (input, expected) in cases {
+            #expect(Hex.value(input) == expected)
+        }
     }
 
     @Test func encodesLowercase() {

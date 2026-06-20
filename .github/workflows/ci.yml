@@ -10,65 +10,28 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
-  lint:
-    name: Lint (format + shipped-library discipline)
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
-      # Run the package's own `lint` plugin (ADF_DEV-gated) rather than a bare `swift format lint`,
-      # so the shipped-library discipline — no force-unwrap / force-try, no locale-sensitive strtod —
-      # is enforced alongside the formatting gate. The toolchain ships swift-format; `.swift-version`
-      # pins 6.3.2.
-      - name: swift package lint
-        run: ADF_DEV=1 swift package lint
-
-  test-macos:
-    name: macOS (${{ matrix.config }})
-    runs-on: macos-15
-    strategy:
-      fail-fast: false
-      matrix:
-        config: [debug, release]
-    steps:
-      - uses: actions/checkout@v4
-      - name: swift --version
-        run: swift --version
-      - name: Build
-        run: swift build -c ${{ matrix.config }}
-      - name: Test
-        run: swift test -c ${{ matrix.config }} --enable-code-coverage
-      # Report-only coverage summary (no threshold gate yet): surfaces line coverage of the shipped
-      # sources in the job log so a drop is visible in review. Best-effort — never fails the build.
-      - name: Coverage summary
-        if: matrix.config == 'debug'
-        run: |
-          BIN=$(swift build -c debug --show-bin-path)
-          PROF="$BIN/codecov/default.profdata"
-          XCTEST=$(find "$BIN" -maxdepth 1 -name '*.xctest' | head -1)
-          BINARY="$XCTEST/Contents/MacOS/$(basename "$XCTEST" .xctest)"
-          if [ -f "$PROF" ] && [ -f "$BINARY" ]; then
-            xcrun llvm-cov report "$BINARY" -instr-profile "$PROF" \
-              -ignore-filename-regex='Tests/|\.build/' || true
-          else
-            echo "coverage artifacts not found; skipping summary"
-          fi
-
-  test-linux:
-    name: Linux (${{ matrix.config }})
-    runs-on: ubuntu-latest
-    # Pin to the toolchain in `.swift-version`. Adjust the tag if the runner image lags.
-    container: swiftlang/swift:nightly-6.4-jammy
-    strategy:
-      fail-fast: false
-      matrix:
-        config: [debug, release]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build
-        run: swift build -c ${{ matrix.config }}
-      - name: Test
-        run: swift test -c ${{ matrix.config }}
+  quality:
+    # Full-adopt of the reusable workflow for the COMMON legs: the gate (format/discipline +
+    # SwiftLint metrics + config/manifest drift + internal-tag check), build/test on macOS + Linux
+    # (debug + release, with coverage on the debug macOS leg), the macOS sanitizer matrix, and the
+    # DocC build. ADFoundation is a LEAF for resolution purposes: its only non-dev dependency is
+    # swift-syntax (a versioned package); the first-party AD-family deps (ADBuildTools, ADTestKit)
+    # are gated behind `ADF_DEV` (Package.swift lines 53–79), so a clean CI checkout resolves with
+    # NO unpublished siblings — hence `requires-published-siblings` is omitted (defaults false) and
+    # build/test run on every push. Sanitizers mirror the previous bespoke macOS matrix
+    # (address + thread). The package-UNIQUE invariants (tier isolation, warnings-as-errors over the
+    # core tiers, the Linux sanitizer pass, and the dev-graph compile) stay as jobs below.
+    uses: g-cqd/ADBuildTools/.github/workflows/swift-quality.yml@v1
+    with:
+      dev-env-var: ADF_DEV
+      enable-sanitizers: true
+      sanitizers: "address thread"
+      enable-docs: true
+      docs-target: ADFoundation
 
   strict-warnings:
     name: Warnings as errors (core tiers)
@@ -85,7 +48,8 @@ jobs:
   strict-warnings-linux:
     name: Warnings as errors (core tiers, Linux)
     runs-on: ubuntu-latest
-    container: swiftlang/swift:nightly-6.4-jammy
+    # Dated nightly pins the toolchain for reproducible CI; bump deliberately like a dependency (#14).
+    container: swiftlang/swift:nightly-6.4-2026-06-18-jammy
     steps:
       - uses: actions/checkout@v4
       # Same warnings-as-errors gate as macOS, but over the Glibc #else branches in ADFIO. Stays a CI
@@ -116,27 +80,18 @@ jobs:
             fi
           done
 
-  sanitizers-macos:
-    name: Sanitizer macOS (${{ matrix.sanitize }})
-    runs-on: macos-15
-    strategy:
-      fail-fast: false
-      matrix:
-        sanitize: [address, thread]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Test under ${{ matrix.sanitize }}Sanitizer
-        run: swift test --sanitize=${{ matrix.sanitize }}
-
   sanitizers-linux:
     name: Sanitizer Linux (${{ matrix.sanitize }})
     runs-on: ubuntu-latest
-    container: swiftlang/swift:nightly-6.4-jammy
+    # Dated nightly pins the toolchain for reproducible CI; bump deliberately like a dependency (#14).
+    container: swiftlang/swift:nightly-6.4-2026-06-18-jammy
     strategy:
       fail-fast: false
       matrix:
         # Address catches the Glibc-path pointer/mmap code; undefined covers the C11 atomics shim
         # and pointer arithmetic. (Both pass locally on macOS; Linux exercises the #else branches.)
+        # The macOS sanitizer matrix (address + thread) runs in the reusable `quality` job above; this
+        # Linux pass is package-unique because the reusable's sanitizer leg is macOS-only.
         sanitize: [address, undefined]
     steps:
       - uses: actions/checkout@v4
@@ -150,6 +105,8 @@ jobs:
       - uses: actions/checkout@v4
       # Compile the ADF_DEV-only graph (the LintBuild build-tool plugin and the ordo-one benchmark
       # target) so it can't bitrot, then build the DocC archives so doc links can't silently break.
+      # The reusable `quality` job builds the canonical single-target (ADFoundation) DocC; this job
+      # additionally compiles the full dev graph, which the reusable does not cover.
       - name: Build dev targets
         run: ADF_DEV=1 swift build
       - name: Build documentation

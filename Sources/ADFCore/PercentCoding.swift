@@ -41,10 +41,28 @@ public enum PercentCoding {
 
     /// Percent-decodes `bytes`, turning each `%XX` triple back into its byte and copying everything
     /// else verbatim. Returns `nil` on a truncated (`"%"`, `"%A"`) or non-hex (`"%G0"`) escape rather
-    /// than trapping. A literal `"+"` is left as-is: mapping `"+"` to space is the
-    /// `application/x-www-form-urlencoded` rule, which a caller layers on top if it wants it.
+    /// than trapping. A literal `"+"` is left as-is (RFC 3986); use ``decodeForm(_:)`` when you need the
+    /// `application/x-www-form-urlencoded` `"+"`→space rule (query components, HTML form bodies).
     @inlinable
     public static func decode(_ bytes: some Collection<UInt8>) -> [UInt8]? {
+        decode(bytes, plusAsSpace: false)
+    }
+
+    /// Percent-decodes `bytes` as `application/x-www-form-urlencoded`: identical to ``decode(_:)``
+    /// except a literal `"+"` becomes a space (`0x20`) — the rule for URL query components and HTML
+    /// form bodies. Returns `nil` on a malformed escape, exactly like ``decode(_:)``. Decoding the
+    /// query string through one audited primitive (rather than a per-call hand-rolled loop) is also the
+    /// safe choice: the `nil` lets the caller reject malformed input instead of silently mis-decoding.
+    @inlinable
+    public static func decodeForm(_ bytes: some Collection<UInt8>) -> [UInt8]? {
+        decode(bytes, plusAsSpace: true)
+    }
+
+    /// Shared decoder core. Percent-decodes `bytes`; when `plusAsSpace` is `true`, a literal `"+"` maps
+    /// to a space (`0x20`) per `application/x-www-form-urlencoded`, otherwise it is copied verbatim per
+    /// RFC 3986. Returns `nil` on a truncated or non-hex escape rather than trapping.
+    @inlinable
+    public static func decode(_ bytes: some Collection<UInt8>, plusAsSpace: Bool) -> [UInt8]? {
         // Decoding only ever copies or shrinks, so `bytes.count` is an exact upper bound: build into a
         // single, exclusively-owned `OutputSpan` sized to it (back-deploys to the floor; no
         // `reserveCapacity` foot-gun, bounds-checked writes, no CoW). A malformed escape sets the flag
@@ -53,6 +71,10 @@ public enum PercentCoding {
         let result = [UInt8](capacity: bytes.count) { span in
             var iterator = bytes.makeIterator()
             while let b = iterator.next() {
+                if plusAsSpace, b == UInt8(ascii: "+") {
+                    span.append(UInt8(ascii: " "))
+                    continue
+                }
                 guard b == UInt8(ascii: "%") else {
                     span.append(b)
                     continue

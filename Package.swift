@@ -1,10 +1,19 @@
 // swift-tools-version: 6.4
 import PackageDescription
 
+// ADFoundation — the umbrella package + the family's shared, finely-decomposed foundation tiers.
+// ONE package, MANY small targets (link exactly what you need), with two umbrella modules:
+//   • `import ADFoundation` — every zero-dependency RUNTIME tier (byte/number kernel, Unicode, text,
+//     POSIX IO, process metrics, and the concurrency seams).
+//   • `import ADTesting`    — the deterministic-testing kit (ADTestKit + ADTestKitSeams; the seams
+//     come transitively). The test-side mirror of the runtime umbrella.
+// Folded in (formerly standalone packages): ADConcurrency (zero-dep production seams + pools) and
+// ADTestKit (the testing kit). Keeping them as IN-PACKAGE targets dissolves the old
+// ADFoundation↔ADTestKit dependency cycle — ADFoundation's own tests now use the in-package kit
+// directly, so there is no external test-kit package to cycle with.
+
 // Strict, dependency-safe settings applied to every Swift target. `.v6` turns on complete
-// strict-concurrency checking; the upcoming features tighten existentials (`any`) and import
-// visibility. None are unsafe flags, so the libraries stay resolvable through a version-pinned
-// `.package(url:from:)` requirement. Aligned with the sibling ADJSON / ADSQL / URLBuilder packages.
+// strict-concurrency checking; the upcoming features tighten existentials (`any`) and import visibility.
 let strictSettings: [SwiftSetting] = [
     .swiftLanguageMode(.v6),
     .treatAllWarnings(as: .error),
@@ -14,18 +23,12 @@ let strictSettings: [SwiftSetting] = [
     .enableUpcomingFeature("MemberImportVisibility")
 ]
 
-// The byte/IO kernel additionally adopts SE-0458 strict memory safety: every unsafe construct must
-// be explicitly `unsafe`-annotated, so any new unsafe use is compiler-flagged. Matches ADSQL's
-// `ADDBCore` kernel. Applied to the targets that hold pointer / POSIX code (ADFCore, ADFIO).
-// `Lifetimes` (experimental, compile-time only — no runtime-floor impact) lets the kernel return
-// `~Escapable` `Span`/`RawSpan` views whose lifetime the compiler proves can't dangle, replacing
-// doc-only raw-pointer contracts. Matches the ADDB/ADSQL kernels.
+// The byte/IO kernel additionally adopts SE-0458 strict memory safety + the compile-time-only
+// `Lifetimes` feature (no runtime-floor impact). Applied to the pointer/POSIX targets (ADFCore, ADFIO).
 let kernelSettings: [SwiftSetting] =
     strictSettings + [.strictMemorySafety(), .enableExperimentalFeature("Lifetimes")]
 
-// Compile-time type-check timing warnings (flag slow expressions / function bodies). These use
-// unsafe flags, which would block version-based dependency resolution if placed on a shipped
-// library, so they live only on the internal (non-exported) test targets.
+// Compile-time type-check timing warnings — unsafe flags, so they live only on test targets.
 let timingWarningFlags: [SwiftSetting] = [
     .unsafeFlags([
         "-Xfrontend", "-warn-long-function-bodies=100",
@@ -37,23 +40,24 @@ let timingWarningFlags: [SwiftSetting] = [
 let testSettings: [SwiftSetting] =
     strictSettings + timingWarningFlags + [.unsafeFlags(["-enable-actor-data-race-checks"])]
 
-// Dev-only tooling is gated behind `ADF_DEV` so packages that depend on ADFoundation never resolve
-// it. The `format` / `lint` / `LintBuild` plugins now come from the shared ADBuildTools dev
-// dependency, so they are available only with the flag set (CI and the git hooks set it).
+// Dev-only tooling is gated behind `ADF_DEV` so consumers never resolve it.
 let isDev = Context.environment["ADF_DEV"] != nil
 
+// Non-dev dependencies:
+//   • swift-syntax     — backs ADFMacroSupport (the shared macro-plugin helpers).
+//   • swift-collections — `HeapModule` backs the in-package ADTestKit `TestClock` sleeper queue.
+//   • swift-system     — `SystemPackage` backs ADTestKit's typed temp-file paths.
+// The latter two enter the graph because the test kit now ships as a product of THIS package; a
+// consumer that links only a runtime tier (e.g. `ADFCore`) still does not BUILD them, but does
+// resolve them (SwiftPM resolution is package-granular). This is the accepted cost of the single
+// umbrella package over the previous separate ADConcurrency / ADTestKit repos.
 var packageDependencies: [Package.Dependency] = [
-    // swift-syntax backs ADFMacroSupport (the shared macro-plugin helpers) — the ONLY non-dev
-    // dependency, and ONLY the ADFMacroSupport product links it. The core tiers
-    // (ADFCore / ADFUnicode / ADFText / ADFIO) stay swift-syntax-free. Every consumer that links
-    // ADFMacroSupport (the ADJSON / ADSQL / URLBuilder macro plugins) already depends on
-    // swift-syntax 603 for its own macros, so this adds nothing new to their resolution graph.
-    .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "603.0.0")
+    .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "603.0.0"),
+    .package(url: "https://github.com/apple/swift-collections.git", from: "1.6.0"),
+    .package(url: "https://github.com/apple/swift-system.git", from: "1.7.2")
 ]
 if isDev {
-    // Shared lint/format tooling (Format/Lint/LintBuild plugins + canonical `.swift-format`). Dev-only,
-    // so packages that depend on ADFoundation never resolve it. Resolves from a local checkout via
-    // `ADBUILDTOOLS_PATH`, otherwise from the published `main` branch.
+    // Shared lint/format tooling (Format/Lint/LintBuild plugins + canonical `.swift-format`).
     if let path = Context.environment["ADBUILDTOOLS_PATH"], !path.isEmpty {
         packageDependencies.append(.package(path: path))
     } else {
@@ -62,35 +66,21 @@ if isDev {
     }
     packageDependencies.append(
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.0.0"))
-    // ordo-one's statistically-rigorous benchmark framework (p-percentile latencies + throughput),
-    // matching the sibling packages. The suite lives in `Benchmarks/ADFoundationSuite` and runs via
-    // `ADF_DEV=1 swift package benchmark`. Dev-only, so packages depending on ADFoundation never
-    // resolve it.
+    // ordo-one benchmark suite (`ADF_DEV=1 swift package benchmark`).
     packageDependencies.append(
         .package(url: "https://github.com/ordo-one/benchmark", from: "1.4.0"))
-    // ADTestKit — the shared AD-family testing architecture (SeededRNG, Fuzz, oracles, async/time
-    // tools). Test-only and dev-gated, so packages depending on ADFoundation never resolve it.
-    // Local checkout via `ADTESTKIT_PATH`, otherwise the published `main`.
-    if let path = Context.environment["ADTESTKIT_PATH"], !path.isEmpty {
-        packageDependencies.append(.package(path: path))
-    } else {
-        packageDependencies.append(
-            .package(url: "https://github.com/g-cqd/ADTestKit.git", branch: "main"))
-    }
 }
 
-// Build-time formatting enforcement attaches to the libraries only in dev/CI. A build-tool plugin on
-// a library target would otherwise run for everyone who depends on ADFoundation, so it stays gated.
 let libraryBuildPlugins: [Target.PluginUsage] =
     isDev ? [.plugin(name: "LintBuild", package: "ADBuildTools")] : []
 
+let heapModule: Target.Dependency = .product(name: "HeapModule", package: "swift-collections")
+let systemPackage: Target.Dependency = .product(name: "SystemPackage", package: "swift-system")
+
 let package = Package(
     name: "ADFoundation",
-    // The shared deployment floor of every consumer (ADJSON / ADSQL / URLBuilder / apple-docs):
-    // `Synchronization` (Mutex/Atomic) ships in macOS 15 / iOS 18 / tvOS 18 / watchOS 11 /
-    // visionOS 2, and `Span`/`RawSpan` back-deploy further still. The 2025-SDK-gated
-    // `InlineArray`/`UTF8Span` are deliberately NOT adopted, so this floor holds. (The Swift 6.3
-    // tools-version is a *toolchain* requirement, not a deployment one.)
+    // Family floor: `Synchronization` (Mutex/Atomic) ships in macOS 15 / iOS 18 / tvOS 18 / watchOS 11 /
+    // visionOS 2; `Span`/`RawSpan` back-deploy further. The 2025-SDK-gated InlineArray/UTF8Span are not adopted.
     platforms: [
         .macOS(.v15),
         .iOS(.v18),
@@ -99,56 +89,48 @@ let package = Package(
         .visionOS(.v2)
     ],
     products: [
-        // Umbrella: re-exports the always-available core tiers for `import ADFoundation`.
+        // Runtime umbrella: `import ADFoundation` → every zero-dependency runtime tier.
         .library(name: "ADFoundation", targets: ["ADFoundation"]),
-        // The zero-dependency byte / number / ASCII / UTF-8 / hash kernel. Foundation-free,
-        // swift-syntax-free, no transitive package dependency — so the portable `ADJSONCore` and the
-        // apple-docs zero-external-dep dylib can link it without poisoning their dependency graphs.
+        // Test umbrella: `import ADTesting` → the deterministic-testing kit (+ seams).
+        .library(name: "ADTesting", targets: ["ADTesting"]),
+        // Individual runtime tiers — link exactly what you need.
         .library(name: "ADFCore", targets: ["ADFCore"]),
-        // Generic Unicode kernel (canonical decomposition / case-folding / property sets). Stdlib-only.
         .library(name: "ADFUnicode", targets: ["ADFUnicode"]),
-        // Generic text algorithms (edit distance, tokenizer kernels). Stdlib-only.
         .library(name: "ADFText", targets: ["ADFText"]),
-        // POSIX file channel + read-only memory mapping + cross-process atomics. Stdlib + libc only.
         .library(name: "ADFIO", targets: ["ADFIO"]),
-        // Process self-metrics: CPU time, resident/footprint memory, peak RSS, and (Apple Silicon)
-        // retired instructions / cycles. Stdlib + libc/Mach only — the building block for measuring
-        // the CPU and memory cost of a method, a phase, or a whole run.
         .library(name: "ADFMetrics", targets: ["ADFMetrics"]),
-        // Shared swift-syntax helpers for macro compiler plugins (diagnostics, Swift source-literal
-        // escaping, identifier backticking). The one tier that links swift-syntax.
-        .library(name: "ADFMacroSupport", targets: ["ADFMacroSupport"])
+        // Concurrency seams + pools (formerly the standalone ADConcurrency package).
+        .library(name: "ADConcurrency", targets: ["ADConcurrency"]),
+        // Shared swift-syntax helpers for macro compiler plugins. The one tier that links swift-syntax.
+        .library(name: "ADFMacroSupport", targets: ["ADFMacroSupport"]),
+        // Test tooling (formerly the standalone ADTestKit package).
+        .library(name: "ADTestKit", targets: ["ADTestKit"]),
+        .library(name: "ADTestKitSeams", targets: ["ADTestKitSeams"])
     ],
     dependencies: packageDependencies,
     targets: [
+        // ── Runtime tiers ──
         // ADFCore — pointer-level byte primitives; SE-0458 strict memory safety.
         .target(name: "ADFCore", swiftSettings: kernelSettings, plugins: libraryBuildPlugins),
-        // ADFUnicode — generic Unicode kernel over ADFCore byte buffers.
         .target(
             name: "ADFUnicode", dependencies: ["ADFCore"], swiftSettings: strictSettings,
             plugins: libraryBuildPlugins),
-        // ADFText — edit distance + tokenizer kernels.
         .target(
             name: "ADFText", dependencies: ["ADFCore", "ADFUnicode"], swiftSettings: strictSettings,
             plugins: libraryBuildPlugins),
-        // ADFIO — POSIX storage primitives over libc + pure-Swift cross-process atomics
-        // (`SharedAtomicU64` over `Synchronization.Atomic`); SE-0458 strict memory safety.
         .target(
             name: "ADFIO", dependencies: ["ADFCore"], swiftSettings: kernelSettings,
             plugins: libraryBuildPlugins),
-        // ADFMetrics — process self-metrics over libc/Mach (getrusage, task_info, clock_gettime,
-        // proc_pid_rusage). A thin syscall façade, not the byte kernel, so it takes the standard
-        // strict settings rather than the SE-0458 memory-safety kernel settings; no package dependency.
         .target(name: "ADFMetrics", swiftSettings: strictSettings, plugins: libraryBuildPlugins),
-        // ADFoundation — umbrella re-export of every zero-dependency runtime tier (ADFMacroSupport is
-        // excluded: it links swift-syntax and is imported directly by macro plugins).
+        // ADConcurrency — zero-dep production seams (TaskProvider/Clock) + ResourcePool / BlockingOffloadPool.
+        .target(name: "ADConcurrency", swiftSettings: strictSettings, plugins: libraryBuildPlugins),
+        // Runtime umbrella — re-exports every runtime tier (NOT ADFMacroSupport: swift-syntax stays opt-in).
         .target(
-            name: "ADFoundation", dependencies: ["ADFCore", "ADFIO", "ADFText", "ADFUnicode", "ADFMetrics"],
+            name: "ADFoundation",
+            dependencies: ["ADFCore", "ADFIO", "ADFText", "ADFUnicode", "ADFMetrics", "ADConcurrency"],
             swiftSettings: strictSettings, plugins: libraryBuildPlugins),
-        // ADFMacroSupport — swift-syntax helpers shared by macro compiler plugins: a uniform
-        // `DiagnosticMessage` + builder, Swift source-literal escaping, and identifier backticking.
-        // Pure swift-syntax codegen (no pointers), so it takes strict settings but not the memory-
-        // safety kernel. The only tier that links swift-syntax.
+
+        // ── Macro support (the one swift-syntax tier) ──
         .target(
             name: "ADFMacroSupport",
             dependencies: [
@@ -158,30 +140,47 @@ let package = Package(
             swiftSettings: strictSettings,
             plugins: libraryBuildPlugins),
 
-        .testTarget(name: "ADFCoreTests", dependencies: ["ADFCore"], swiftSettings: testSettings),
+        // ── Test tooling ──
+        // CADTestKitMalloc — C shim exposing process-wide heap-allocation counting (Darwin malloc_logger).
+        .target(name: "CADTestKitMalloc"),
+        // ADTestKitSeams — stable re-export of the ADConcurrency seams (`@_exported import ADConcurrency`).
+        .target(
+            name: "ADTestKitSeams", dependencies: ["ADConcurrency"],
+            swiftSettings: strictSettings, plugins: libraryBuildPlugins),
+        // ADTestKit — the deterministic-testing kit (Testing-backed asserts, SeededRNG, Fuzz, oracles,
+        // TestClock/AsyncProbe, gates). HeapModule = TestClock sleeper queue; SystemPackage = temp files.
+        .target(
+            name: "ADTestKit",
+            dependencies: ["ADTestKitSeams", "CADTestKitMalloc", heapModule, systemPackage],
+            swiftSettings: strictSettings, plugins: libraryBuildPlugins),
+        // ADTesting — test umbrella: one `import ADTesting` for a test target.
+        .target(
+            name: "ADTesting", dependencies: ["ADTestKit", "ADTestKitSeams"],
+            swiftSettings: strictSettings, plugins: libraryBuildPlugins),
+
+        // ── Tests ──
+        // ADFCore / ADFText use the in-package kit's `SeededRNG` — the cycle-break in action (no external
+        // ADTestKit package, so depending on it from ADFoundation's own tests is just an intra-package edge).
+        .testTarget(
+            name: "ADFCoreTests", dependencies: ["ADFCore", "ADTestKit"], swiftSettings: testSettings),
         .testTarget(name: "ADFUnicodeTests", dependencies: ["ADFUnicode"], swiftSettings: testSettings),
-        .testTarget(name: "ADFTextTests", dependencies: ["ADFText"], swiftSettings: testSettings),
+        .testTarget(
+            name: "ADFTextTests", dependencies: ["ADFText", "ADTestKit"], swiftSettings: testSettings),
         .testTarget(name: "ADFIOTests", dependencies: ["ADFIO"], swiftSettings: testSettings),
         .testTarget(name: "ADFMetricsTests", dependencies: ["ADFMetrics"], swiftSettings: testSettings),
         .testTarget(
-            name: "ADFMacroSupportTests", dependencies: ["ADFMacroSupport"], swiftSettings: testSettings)
-
-        // Format / lint / LintBuild plugins now come from the shared ADBuildTools dev dependency, so the
-        // lint logic lives in exactly one place (see `libraryBuildPlugins` above for the build-tool usage).
+            name: "ADFMacroSupportTests", dependencies: ["ADFMacroSupport"], swiftSettings: testSettings),
+        // Folded suites keep their origin settings (no aggressive type-check timing gate).
+        .testTarget(
+            name: "ADConcurrencyTests", dependencies: ["ADConcurrency"], swiftSettings: strictSettings),
+        .testTarget(
+            name: "ADTestKitTests", dependencies: ["ADTestKit", "ADTestKitSeams"],
+            swiftSettings: strictSettings)
     ]
 )
 
-// ordo-one benchmark suite (ADF_DEV-gated): compares the adaptive primitives — edit distance
-// (full / banded / adaptive) and UTF-8 validation (scalar / SIMD) — across input sizes, so the
-// dispatch thresholds stay benchmark-backed. Runs via `ADF_DEV=1 swift package benchmark`.
+// ordo-one benchmark suite (ADF_DEV-gated).
 if isDev {
-    // Wire the dev-only ADTestKit into the test targets that use the shared `SeededRNG`
-    // (downstream consumers never see it): the edit-distance cross-checks (ADFText) and the
-    // UTF-8 SIMD-vs-scalar parity fuzz (ADFCore).
-    let adTestKit: Target.Dependency = .product(name: "ADTestKit", package: "ADTestKit")
-    for name in ["ADFTextTests", "ADFCoreTests"] {
-        package.targets.first { $0.name == name }?.dependencies.append(adTestKit)
-    }
     package.targets.append(
         .executableTarget(
             name: "ADFoundationSuite",

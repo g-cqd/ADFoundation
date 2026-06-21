@@ -143,7 +143,7 @@ let package = Package(
         // ADFoundation — umbrella re-export of every zero-dependency runtime tier (ADFMacroSupport is
         // excluded: it links swift-syntax and is imported directly by macro plugins).
         .target(
-            name: "ADFoundation", dependencies: ["ADFCore", "ADFIO", "ADFText", "ADFUnicode"],
+            name: "ADFoundation", dependencies: ["ADFCore", "ADFIO", "ADFText", "ADFUnicode", "ADFMetrics"],
             swiftSettings: strictSettings, plugins: libraryBuildPlugins),
         // ADFMacroSupport — swift-syntax helpers shared by macro compiler plugins: a uniform
         // `DiagnosticMessage` + builder, Swift source-literal escaping, and identifier backticking.

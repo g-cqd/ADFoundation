@@ -157,6 +157,17 @@ nonisolated(unsafe) let benchmarks = {
     Benchmark("cow/percent-decode escape-heavy 256", configuration: cowMetrics) { bm in
         for _ in bm.scaledIterations { blackHole(PercentCoding.decode(escapeHeavy)) }
     }
+    // percent-ENCODE — the direction the decode case above did not cover. An ASCII-safe run (few
+    // escapes, the common case) next to an escape-heavy run (mostly `%XX` triples), so the encoder's
+    // single-allocation OutputSpan build is guarded in both regimes.
+    let percentSafe = asciiBytes(256)
+    let percentRaw = mixedBytes(256)
+    Benchmark("cow/percent-encode ascii-safe 256", configuration: cowMetrics) { bm in
+        for _ in bm.scaledIterations { blackHole(PercentCoding.encode(percentSafe)) }
+    }
+    Benchmark("cow/percent-encode escape-heavy 256", configuration: cowMetrics) { bm in
+        for _ in bm.scaledIterations { blackHole(PercentCoding.encode(percentRaw)) }
+    }
 
     // Build a run of varints two ways: the reserve+append array form vs. the exclusively-owned
     // OutputSpan form. Both should allocate exactly once; the benchmark guards that invariant.

@@ -23,22 +23,17 @@ public struct IOError: Error, Equatable, Sendable {
 extension IOError: CustomStringConvertible {
     public var description: String {
         // Format `errno` into a caller-owned buffer so concurrent formatting can't corrupt a shared
-        // static buffer (as plain `strerror` would). Darwin and Glibc expose different `strerror_r`
-        // contracts, handled explicitly below; the buffer is zero-initialized first so no branch can
-        // ever read uninitialized stack memory.
+        // static buffer (as plain `strerror` would). Both Darwin and Swift's Glibc module expose the
+        // XSI `strerror_r` (returns 0 on success and fills the buffer) — the GNU `char *`-returning
+        // variant is NOT what the importer vends on the family's pinned Linux toolchain — so a single
+        // branch serves both platforms. The buffer is zero-initialized first so no path can ever read
+        // uninitialized stack memory.
         let detail = withUnsafeTemporaryAllocation(of: CChar.self, capacity: 256) { buffer in
             guard let base = buffer.baseAddress else { return "errno \(errno)" }
             unsafe base.initialize(repeating: 0, count: buffer.count)
-            #if canImport(Darwin)
-                // XSI `strerror_r`: returns 0 on success and fills the buffer. On failure don't trust
-                // a partially written buffer — surface the bare errno instead.
-                guard unsafe strerror_r(errno, base, buffer.count) == 0 else { return "errno \(errno)" }
-                return unsafe String(cString: base)
-            #else
-                // GNU `strerror_r` (the Glibc default): returns a `char *` that may point at a static
-                // string rather than the supplied buffer, so the *return value* is the message.
-                return unsafe String(cString: strerror_r(errno, base, buffer.count))
-            #endif
+            // On failure don't trust a partially written buffer — surface the bare errno instead.
+            guard unsafe strerror_r(errno, base, buffer.count) == 0 else { return "errno \(errno)" }
+            return unsafe String(cString: base)
         }
         return "I/O error in \(op): \(detail) (errno \(errno))"
     }

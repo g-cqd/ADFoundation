@@ -46,7 +46,9 @@ struct TempFilesTests {
         let dir = TemporaryDirectory()
         let nested = dir.file("sub/deeper")
         try fm.createDirectory(atPath: nested, withIntermediateDirectories: true)
-        fm.createFile(atPath: dir.file("sub/leaf.txt"), contents: Data("x".utf8))
+        // Assert the create succeeded — also required on Linux, where corelibs-foundation's
+        // `createFile` is not `@discardableResult` (unused result = error under -warnings-as-errors).
+        #expect(fm.createFile(atPath: dir.file("sub/leaf.txt"), contents: Data("x".utf8)))
         #expect(fm.fileExists(atPath: nested))
 
         dir.cleanup()
@@ -81,10 +83,12 @@ struct TempFilesTests {
         var dbPath = ""
         withTemporaryFilePath(extension: "db") { path in
             dbPath = path
-            // The engine would create the db plus -wal/-shm siblings next to it.
-            fm.createFile(atPath: path, contents: Data("db".utf8))
-            fm.createFile(atPath: path + "-wal", contents: Data("wal".utf8))
-            fm.createFile(atPath: path + "-shm", contents: Data())
+            // The engine would create the db plus -wal/-shm siblings next to it. Assert each
+            // create — also required on Linux, where corelibs-foundation's `createFile` is not
+            // `@discardableResult` (unused result = error under -warnings-as-errors).
+            #expect(fm.createFile(atPath: path, contents: Data("db".utf8)))
+            #expect(fm.createFile(atPath: path + "-wal", contents: Data("wal".utf8)))
+            #expect(fm.createFile(atPath: path + "-shm", contents: Data()))
             #expect(fm.fileExists(atPath: path))
         }
         #expect(!dbPath.isEmpty)

@@ -115,21 +115,33 @@ public enum ProcessProbe {
 
     /// User and system CPU nanoseconds for the whole process (all threads), via `getrusage`.
     public static func processCPUNanos() -> (user: UInt64, system: UInt64) {
-        var ru = rusage()
-        _ = getrusage(RUSAGE_SELF, &ru)
+        let ru = selfUsage()
         return (timevalNanos(ru.ru_utime), timevalNanos(ru.ru_stime))
     }
 
     /// Peak resident set size in bytes since the process started (`getrusage` high-water mark).
     /// Normalized to bytes on every platform (Darwin reports bytes, Linux reports kilobytes).
     public static func peakResidentBytes() -> UInt64 {
-        var ru = rusage()
-        _ = getrusage(RUSAGE_SELF, &ru)
+        let ru = selfUsage()
         #if canImport(Darwin)
             return UInt64(clamping: ru.ru_maxrss)
         #else
             return UInt64(clamping: ru.ru_maxrss) &* 1024
         #endif
+    }
+
+    /// `getrusage(RUSAGE_SELF)` with the `who` argument spelled per libc. Darwin (and Musl) declare
+    /// the parameter `Int32` and export `RUSAGE_SELF` to match, but Glibc's importer vends
+    /// `RUSAGE_SELF` as the C enum `__rusage_who` while `getrusage` still takes a plain `Int32`,
+    /// so the raw value must be passed explicitly there.
+    private static func selfUsage() -> rusage {
+        var ru = rusage()
+        #if canImport(Glibc)
+            _ = getrusage(RUSAGE_SELF.rawValue, &ru)
+        #else
+            _ = getrusage(RUSAGE_SELF, &ru)
+        #endif
+        return ru
     }
 
     @inline(__always)

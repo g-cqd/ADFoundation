@@ -25,9 +25,13 @@ struct TokenizerTests {
     }
 
     /// Exercises the generic path over a non-`Int`-indexed collection (String / String.Index).
+    /// Typed intermediate `let`s keep the generic-windows + closure + literal comparison from
+    /// being inferred as one expression, which pushed the body toward the type-check budget.
     @Test func windowsOverStringIndices() {
         let s = "café"
-        #expect(ADFText.windows(s, size: 2).map { String(s[$0]) } == ["ca", "af", "fé"])
+        let ranges: [Range<String.Index>] = ADFText.windows(s, size: 2)
+        let strings: [String] = ranges.map { String(s[$0]) }
+        #expect(strings == ["ca", "af", "fé"])
     }
 
     private func splitStrings(_ s: String, omittingEmpty: Bool = true) -> [String] {

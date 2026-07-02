@@ -1,9 +1,15 @@
 # ADFoundation
 
-Shared, modular foundations for the g-cqd engines — [ADJSON](https://github.com/g-cqd/ADJSON), ADSQL,
-URLBuilder, and apple-docs. ADFoundation holds only **domain-neutral** primitives so each engine
-stops re-implementing them, and is split into tiers **by dependency footprint** so every consumer
-links exactly what it needs.
+Shared, modular foundations for the g-cqd engines — [ADJSON](https://github.com/g-cqd/ADJSON),
+[ADSQL](https://github.com/g-cqd/ADSQL), [ADDB](https://github.com/g-cqd/ADDB),
+[URLBuilder](https://github.com/g-cqd/URLBuilder), [ADHTML](https://github.com/g-cqd/ADHTML),
+[ADServe](https://github.com/g-cqd/ADServe), and apple-docs. ADFoundation holds only
+**domain-neutral** primitives so each engine stops re-implementing them, and is split into tiers
+**by dependency footprint** so every consumer links exactly what it needs.
+
+It is also the family's **umbrella package**: the formerly-standalone `ADConcurrency` and
+`ADTestKit` packages were folded in as tiers (module names unchanged — consumers only changed the
+`package:` reference), which dissolved the old ADFoundation↔ADTestKit dependency cycle.
 
 ## Tiers
 
@@ -13,34 +19,43 @@ links exactly what it needs.
 | **ADFUnicode** | canonical decomposition (NFD), case-folding, Unicode property sets | none |
 | **ADFText** | bounded edit distance, tokenizer kernels | none |
 | **ADFIO** | POSIX file channel, read-only memory mapping, cross-process atomics | none |
+| **ADFMetrics** | low-overhead CPU + memory self-probes (`ProcessProbe`) | none |
+| **ADConcurrency** | concurrency seams + pools: `ResourcePool`, `BlockingOffloadPool`, `TaskProvider` and clock seams; formerly the standalone ADConcurrency package | none |
 | **ADFMacroSupport** | swift-syntax helpers for macro compiler plugins: shared diagnostics, Swift source-literal escaping, identifier backticking | swift-syntax |
-| **ADFoundation** | umbrella — re-exports every zero-dep tier (`ADFCore` / `ADFUnicode` / `ADFText` / `ADFIO`) | — |
+| **ADTestKit** / **ADTestKitSeams** | the deterministic-testing kit (test clock, typed temp paths, heap-allocation counting) + the runtime seams it hooks; formerly the standalone ADTestKit package. Test-only | swift-collections, swift-system |
+| **ADFoundation** | umbrella — re-exports every zero-dep runtime tier (`ADFCore` / `ADFUnicode` / `ADFText` / `ADFIO` / `ADFMetrics` / `ADConcurrency`) | — |
+| **ADTesting** | test umbrella — re-exports `ADTestKit` + `ADTestKitSeams` | — |
 
 `ADFCore` is **Foundation-free, swift-syntax-free, and carries no transitive package dependency**:
 it is consumed by the portable `ADJSONCore` engine and by the apple-docs zero-external-dependency
-dylib, both of which must keep clean resolution graphs. **`ADFMacroSupport` is the only tier with an
-external dependency** (swift-syntax); it is linked solely by macro compiler plugins, so the core
-tiers never pull it in.
+dylib, both of which must keep clean resolution graphs. `ADFMacroSupport` is the only tier that
+links swift-syntax, and the in-package testing kit is the only reason the manifest declares
+swift-collections + swift-system — consumers **resolve** those but never link them unless they take
+the test tiers.
 
 ### Choosing a tier
 
 - Building a **runtime engine** (parser, store, builder): take `ADFCore`, plus `ADFUnicode` /
-  `ADFText` / `ADFIO` only for the kernels you actually call.
+  `ADFText` / `ADFIO` / `ADFMetrics` / `ADConcurrency` only for the kernels you actually call.
 - Writing a **macro compiler plugin**: take `ADFMacroSupport` (it already links swift-syntax).
-- Want everything in one import: `ADFoundation` re-exports all four zero-dependency runtime tiers
-  (`ADFCore` / `ADFUnicode` / `ADFText` / `ADFIO`). `ADFMacroSupport` stays separate — macro plugins
-  import it directly — so a plain `import ADFoundation` never pulls in swift-syntax.
+- Writing **deterministic tests**: `import ADTesting` in test targets (never in shipped products).
+- Want everything in one import: `ADFoundation` re-exports all six zero-dependency runtime tiers.
+  `ADFMacroSupport` stays separate — macro plugins import it directly — so a plain
+  `import ADFoundation` never pulls in swift-syntax.
 
 ## Architecture
 
-ADFoundation is the dependency root beneath the four g-cqd engines. Each links only the tiers it uses:
+ADFoundation is the dependency root beneath the g-cqd engines. Each links only the tiers it uses:
 
 | Engine | Links from ADFoundation |
 |---|---|
-| **ADJSON** | `ADJSONCore` → `ADFCore` (+ `ADFUnicode`); `ADJSONMacros` → `ADFMacroSupport` |
-| **ADSQL** | `ADDBCore` → `ADFCore` + `ADFIO`; `ADSQLMacros` → `ADFMacroSupport` |
-| **URLBuilder** | `URLBuilder` → `ADFCore`; `URLBuilderMacros` → `ADFMacroSupport` |
-| **apple-docs** | `ADBase` / `ADEmbed` → `ADFCore` / `ADFUnicode`; `ADSearchCascade` → `ADFText` |
+| **ADJSON** | `ADJSONCore` → `ADFCore` (+ `ADFUnicode`); `ADJSONMacros` → `ADFMacroSupport`; tests → `ADTestKit` |
+| **ADDB** | `ADDBCore` → `ADFCore` + `ADFIO`; async tier → `ADConcurrency`; macros → `ADFMacroSupport` |
+| **ADSQL** | zero-dependency by design — links nothing from here |
+| **URLBuilder** | `URLBuilder` → `ADFCore`; `URLBuilderMacros` → `ADFMacroSupport`; tests → `ADTestKit` |
+| **ADHTML** | `ADHTMLCore` → `ADFCore` (SWAR/hash/ASCII kernels) |
+| **ADServe** | `ADServeCore` → `ADFCore` + `ADConcurrency` |
+| **apple-docs** | `ADBase` / `ADEmbed` → `ADFCore` / `ADFUnicode`; `ADSearchCascade` → `ADFText`; tests → `ADTestKit` |
 
 Domain code stays with its owner: the JSON writer/escaper lives in ADJSON, the SQLite-FTS5 tokenizers
 in ADSQL, URL semantics in URLBuilder, and the BERT/transformers.js tokenizers in apple-docs.

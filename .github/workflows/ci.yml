@@ -129,5 +129,17 @@ jobs:
       # additionally compiles the full dev graph, which the reusable does not cover.
       - name: Build dev targets
         run: ADF_DEV=1 swift build
-      - name: Build documentation
-        run: ADF_DEV=1 swift package generate-documentation
+      # Per-target DocC over every documentable LIBRARY module — full doc-link coverage of all
+      # shipped + test-kit modules. Deliberately NOT the all-targets invocation: with ADF_DEV=1
+      # that also documents the ordo-one benchmark EXECUTABLE (ADFoundationSuite), whose
+      # symbol-graph extraction the CI snapshot toolchain fails (NSCocoaErrorDomain 260 —
+      # ADFoundationSuite.symbolgraphs never materializes; Xcode 27 beta handles it fine).
+      # Enumerating the library targets keeps the gate strict while never touching the executable.
+      - name: Build documentation (library targets)
+        run: |
+          for t in ADFCore ADFUnicode ADFText ADFIO ADFMetrics ADConcurrency ADFoundation \
+                   ADFMacroSupport ADTestKit ADTestKitSeams ADTesting; do
+            echo "::group::DocC $t"
+            ADF_DEV=1 swift package generate-documentation --target "$t"
+            echo "::endgroup::"
+          done

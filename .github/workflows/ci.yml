@@ -36,9 +36,13 @@ jobs:
 
   strict-warnings:
     name: Warnings as errors (core tiers)
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+      # No hosted macOS image ships Swift 6.4 (this package's tools-version); install the family's
+      # pinned swift.org 6.4 dev snapshot, the same mechanism as the reusable workflow's macOS legs.
+      - name: Install Swift 6.4 dev toolchain
+        uses: g-cqd/ADBuildTools/.github/actions/setup-swift@v1
       # Treat warnings as errors for the zero-dependency tiers only. The `ADFoundation` umbrella pulls
       # ADFCore / ADFIO / ADFText / ADFUnicode / ADFAtomics but not swift-syntax, so `-Xswiftc` can't
       # fail the build on swift-syntax's own warnings (which we don't control). This stays a CI flag —
@@ -60,9 +64,12 @@ jobs:
 
   tier-isolation:
     name: Tier isolation (core tiers stay swift-syntax-free)
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+      # No hosted macOS image ships Swift 6.4 — see strict-warnings.
+      - name: Install Swift 6.4 dev toolchain
+        uses: g-cqd/ADBuildTools/.github/actions/setup-swift@v1
       # The package's defining invariant: the zero-dependency products (ADFCore / ADFUnicode /
       # ADFText / ADFIO and the ADFoundation umbrella) must never transitively link swift-syntax, so
       # the portable ADJSONCore and the apple-docs dylib keep clean resolution graphs. Build each in
@@ -101,9 +108,12 @@ jobs:
 
   dev-build:
     name: Dev build (plugins, benchmarks, docs)
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+      # No hosted macOS image ships Swift 6.4 — see strict-warnings.
+      - name: Install Swift 6.4 dev toolchain
+        uses: g-cqd/ADBuildTools/.github/actions/setup-swift@v1
       # Compile the ADF_DEV-only graph (the LintBuild build-tool plugin and the ordo-one benchmark
       # target) so it can't bitrot, then build the DocC archives so doc links can't silently break.
       # The reusable `quality` job builds the canonical single-target (ADFoundation) DocC; this job

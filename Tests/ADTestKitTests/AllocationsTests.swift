@@ -12,7 +12,7 @@ struct AllocationsTests {
         #if canImport(Darwin)
             // Under a sanitizer the interposed allocator bypasses the default-zone logger, so the
             // kit deliberately reports unavailable there (and the measuring tests below no-op).
-            #expect(allocationCountingAvailable == !sanitizerOwnsAllocator)
+            #expect(allocationCountingAvailable == !sanitizerRuntimeLoaded)
         #endif
     }
 

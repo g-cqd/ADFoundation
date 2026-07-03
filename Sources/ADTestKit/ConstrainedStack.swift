@@ -87,11 +87,22 @@ public struct DepthSweep: Sendable {
         around(caps, upTo: maxDepth)
     }
 
+    /// The default sweep stack: the family's 512 KiB worker floor, scaled to 4 MiB when a
+    /// sanitizer runtime is loaded — ASan redzones / TSan shadow frames inflate native frames
+    /// ~3-4x, so a CAP-LEGAL recursion that fits the production floor uninstrumented would
+    /// falsely SIGBUS under instrumentation (observed: a ~250-frame binder walk at ~1.2 KiB/frame
+    /// clean vs ~3.3 KiB under ASan). The caps' correctness — reject past-cap, accept under-cap —
+    /// is stack-size-independent; the 512 KiB margin proof is only meaningful uninstrumented.
+    /// (`runOnConstrainedStack` itself keeps exact sizes: deliberate-overflow tests need them.)
+    public static var defaultStackSize: Int {
+        sanitizerRuntimeLoaded ? 4 * 1024 * 1024 : 512 * 1024
+    }
+
     /// Runs `body(depth)` on a constrained stack at each swept depth. `body` is
     /// expected to be total — it should evaluate the depth-`n` shape and record any
     /// unexpected outcome itself; reaching the end of the sweep proves none overflowed.
     public func run(
-        stackSize: Int = 512 * 1024,
+        stackSize: Int = DepthSweep.defaultStackSize,
         name: String = "ADTestKit.depth-sweep",
         _ body: @escaping @Sendable (Int) -> Void
     ) {

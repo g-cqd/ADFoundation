@@ -110,9 +110,20 @@ jobs:
         # The macOS sanitizer matrix (address + thread) runs in the reusable `quality` job above; this
         # Linux pass is package-unique because the reusable's sanitizer leg is macOS-only.
         sanitize: [address, undefined]
+    # The UNDEFINED leg is ADVISORY: the pinned 6.4 snapshot's Linux UBSan runtime fails to LINK
+    # the test bundles ("undefined reference to '__ubsan_handle_nonnull_arg'") — the same toolchain
+    # defect the HTTP repo documents. Re-promote when a 6.4 toolchain ships a linkable UBSan
+    # runtime. The ADDRESS leg stays a required gate.
+    continue-on-error: ${{ matrix.sanitize == 'undefined' }}
     steps:
       - uses: actions/checkout@v4
       - name: Test under ${{ matrix.sanitize }}Sanitizer
+        env:
+          # Linux ASan enables LeakSanitizer by default (macOS does not), and corelibs-xctest's
+          # XCTMain harness itself leaks a fixed 432 bytes / 7 allocations per runner process
+          # ("Executed 0 tests" — the empty XCTest half of a swift-testing bundle). Suppress by
+          # XCTest symbol scope only, so genuine leaks in package code still fail the leg.
+          LSAN_OPTIONS: suppressions=.github/lsan-suppressions.txt
         run: swift test --sanitize=${{ matrix.sanitize }}
 
   dev-build:

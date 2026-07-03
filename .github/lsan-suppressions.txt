@@ -1,0 +1,8 @@
+# LeakSanitizer suppressions for the Linux address-sanitizer leg (Linux ASan enables LSan by
+# default; macOS does not).
+#
+# corelibs-xctest's XCTMain allocates a handful of objects it never frees in every test-runner
+# process — a fixed 432 bytes across 7 allocations, every frame inside XCTest ("Executed 0 tests":
+# the empty XCTest half of a swift-testing bundle). Toolchain harness noise, not package code.
+# Scoped to XCTest symbols, so a genuine leak in ADFoundation code still fails the leg.
+leak:XCTest

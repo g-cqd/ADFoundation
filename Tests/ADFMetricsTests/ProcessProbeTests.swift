@@ -49,6 +49,11 @@ struct ProcessProbeTests {
                 return sum
             }
             #expect(result != 0)
+            // VIRTUALIZED arm64 (hosted CI runners) exposes no PMU: `proc_pid_rusage` then reports
+            // 0 retired instructions — the API's documented "unavailable" signal. The absolute
+            // counter after any workload is definitively positive wherever the PMU exists, so gate
+            // the strict assertion on it; real hardware keeps the full check.
+            guard ProcessProbe.snapshot().instructions > 0 else { return }
             #expect(delta.instructions > 0)
         }
     #endif

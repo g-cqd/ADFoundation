@@ -25,13 +25,19 @@ struct ExitTests {
             let limit =
                 ProcessInfo.processInfo.environment["ADTESTKIT_RECURSION_LIMIT"]
                 .flatMap(Int.init) ?? .max
-            @Sendable func deepen(_ depth: Int) -> Int {
+            // Optimizer-proofed: in a release build the original version was folded away entirely
+            // (tail-recursion elimination turns the accumulating self-call into a loop, and scalar
+            // evolution folds the loop to a closed form — the child exited 0 and the exit test
+            // failed). `@_optimize(none)` compiles the probe itself at -Onone, so the recursion
+            // keeps real, growing native frames in every configuration; `@inline(never)` keeps the
+            // call a call, and the branch on the result stops the caller from discarding it.
+            @inline(never) @_optimize(none) @Sendable func deepen(_ depth: Int) -> Int {
                 if depth >= limit { return depth }
                 let pad = [depth, depth &+ 1]
                 return deepen(depth &+ 1) &+ pad[0]
             }
             runOnConstrainedStack(stackSize: 256 * 1024) {
-                _ = deepen(0)
+                if deepen(0) == Int.min { print("unreachable: planted recursion folded") }
             }
         }
     }

@@ -2,18 +2,41 @@ import CADTestKitMalloc
 // `public import`: the allocation assert exposes Swift Testing's `SourceLocation` publicly.
 public import Testing
 
-/// Whether process-wide allocation counting is available here. Darwin: `true` (libmalloc hook). Other
-/// platforms: `false` — the oracle then runs the body but cannot measure, so `expectAllocations` becomes
-/// a no-op there (the ordo-one `.mallocCountTotal` benchmark metric covers those CI legs). A test that
-/// MUST measure can gate on this.
-public var allocationCountingAvailable: Bool { adtk_malloc_counting_available() != 0 }
+#if canImport(Darwin)
+    internal import Darwin
+#elseif canImport(Glibc)
+    internal import Glibc
+#endif
+
+/// Whether a sanitizer runtime (ASan/TSan) is loaded into this process. Their interposed
+/// allocators bypass the default-zone `malloc_logger` the counter hooks, so a sanitizer run would
+/// count 0 for real allocations — allocation counting must report unavailable there. (The
+/// sanitizer legs assert memory/race SAFETY; allocation-count regressions stay locked by the
+/// uninstrumented legs and the benchmark `.mallocCountTotal` metric.)
+let sanitizerOwnsAllocator: Bool = {
+    // The sanitizer runtimes export their initializers; dlsym through the process's own global
+    // scope finds them iff this run is instrumented. (The handle is bound, not passed optional:
+    // Glibc declares dlsym/dlclose with a non-optional handle.)
+    guard let handle = dlopen(nil, RTLD_LAZY) else { return false }
+    defer { dlclose(handle) }
+    return dlsym(handle, "__asan_init") != nil || dlsym(handle, "__tsan_init") != nil
+}()
+
+/// Whether process-wide allocation counting is available here. Darwin: `true` (libmalloc hook),
+/// EXCEPT under a sanitizer, whose interposed allocator the hook cannot observe (see
+/// `sanitizerOwnsAllocator`). Other platforms: `false` — the oracle then runs the body but cannot
+/// measure, so `expectAllocations` becomes a no-op there (the ordo-one `.mallocCountTotal`
+/// benchmark metric covers those CI legs). A test that MUST measure can gate on this.
+public var allocationCountingAvailable: Bool {
+    adtk_malloc_counting_available() != 0 && !sanitizerOwnsAllocator
+}
 
 /// Counts the heap allocations made DURING `body`. Run a SYNCHRONOUS body with no concurrent work (the
 /// count is process-wide) and WARM UP first (call the body once before measuring) so one-time lazy
 /// initialization doesn't skew the delta. Returns `nil` where counting is unavailable (the body still
 /// runs, for its side effects).
 public func mallocDelta(_ body: () -> Void) -> Int? {
-    guard adtk_malloc_counting_available() != 0 else {
+    guard allocationCountingAvailable else {
         body()
         return nil
     }

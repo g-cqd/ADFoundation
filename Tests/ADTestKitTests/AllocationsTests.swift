@@ -10,7 +10,9 @@ struct AllocationsTests {
     @Test
     func `allocation counting is available on Darwin`() {
         #if canImport(Darwin)
-            #expect(allocationCountingAvailable)
+            // Under a sanitizer the interposed allocator bypasses the default-zone logger, so the
+            // kit deliberately reports unavailable there (and the measuring tests below no-op).
+            #expect(allocationCountingAvailable == !sanitizerOwnsAllocator)
         #endif
     }
 

@@ -4,53 +4,53 @@ import Testing
 
 @Suite struct EscapedIdentifierTests {
     @Test func backticksReservedWords() {
-        #expect(escapedIdentifier("default") == "`default`")
-        #expect(escapedIdentifier("class") == "`class`")
-        #expect(escapedIdentifier("Self") == "`Self`")
-        #expect(escapedIdentifier("Any") == "`Any`")
+        #expect(SwiftSource.escapedIdentifier("default") == "`default`")
+        #expect(SwiftSource.escapedIdentifier("class") == "`class`")
+        #expect(SwiftSource.escapedIdentifier("Self") == "`Self`")
+        #expect(SwiftSource.escapedIdentifier("Any") == "`Any`")
     }
 
     @Test func leavesOrdinaryNamesUnchanged() {
-        #expect(escapedIdentifier("name") == "name")
-        #expect(escapedIdentifier("userID") == "userID")
-        #expect(escapedIdentifier("klass") == "klass")
+        #expect(SwiftSource.escapedIdentifier("name") == "name")
+        #expect(SwiftSource.escapedIdentifier("userID") == "userID")
+        #expect(SwiftSource.escapedIdentifier("klass") == "klass")
     }
 
     @Test func keywordSetCoversContextualAndDeclarationKeywords() {
-        #expect(swiftKeywords.contains("associatedtype"))
-        #expect(swiftKeywords.contains("fileprivate"))
-        #expect(swiftKeywords.contains("rethrows"))
-        #expect(!swiftKeywords.contains("foo"))
-        #expect(swiftKeywords.count == 52)
+        #expect(SwiftSource.keywords.contains("associatedtype"))
+        #expect(SwiftSource.keywords.contains("fileprivate"))
+        #expect(SwiftSource.keywords.contains("rethrows"))
+        #expect(!SwiftSource.keywords.contains("foo"))
+        #expect(SwiftSource.keywords.count == 52)
     }
 }
 
 @Suite struct SwiftStringLiteralTests {
     @Test func wrapsPlainTextInQuotes() {
-        #expect(swiftStringLiteral("abc") == #""abc""#)
-        #expect(swiftStringLiteral("") == #""""#)
+        #expect(SwiftSource.stringLiteral("abc") == #""abc""#)
+        #expect(SwiftSource.stringLiteral("") == #""""#)
     }
 
     @Test func escapesQuotesAndBackslashes() {
         // Input: a"b\c  →  "a\"b\\c"
-        #expect(swiftStringLiteral(#"a"b\c"#) == #""a\"b\\c""#)
+        #expect(SwiftSource.stringLiteral(#"a"b\c"#) == #""a\"b\\c""#)
     }
 
     @Test func escapesWhitespaceControls() {
-        #expect(swiftStringLiteral("a\nb") == #""a\nb""#)
-        #expect(swiftStringLiteral("\t") == #""\t""#)
-        #expect(swiftStringLiteral("\r") == #""\r""#)
+        #expect(SwiftSource.stringLiteral("a\nb") == #""a\nb""#)
+        #expect(SwiftSource.stringLiteral("\t") == #""\t""#)
+        #expect(SwiftSource.stringLiteral("\r") == #""\r""#)
     }
 
     @Test func escapesNulAndControlScalars() {
-        #expect(swiftStringLiteral("\u{0}") == #""\0""#)
-        #expect(swiftStringLiteral("\u{1}") == #""\u{01}""#)
-        #expect(swiftStringLiteral("\u{1F}") == #""\u{1f}""#)
+        #expect(SwiftSource.stringLiteral("\u{0}") == #""\0""#)
+        #expect(SwiftSource.stringLiteral("\u{1}") == #""\u{01}""#)
+        #expect(SwiftSource.stringLiteral("\u{1F}") == #""\u{1f}""#)
         // 0x20 (space) is the first non-control scalar — passes through.
-        #expect(swiftStringLiteral("\u{20}") == #"" ""#)
+        #expect(SwiftSource.stringLiteral("\u{20}") == #"" ""#)
     }
 
     @Test func leavesNonAsciiUnescaped() {
-        #expect(swiftStringLiteral("café—∑") == #""café—∑""#)
+        #expect(SwiftSource.stringLiteral("café—∑") == #""café—∑""#)
     }
 }

@@ -8,15 +8,15 @@
 
 public enum CaseFolding {
     private static let sigma: UInt32 = 0x3A3
-    private static let smallSigma = validUnicodeScalar(0x3C3)
-    private static let finalSmallSigma = validUnicodeScalar(0x3C2)
+    private static let smallSigma = UnicodeScalarMath.valid(0x3C3)
+    private static let finalSmallSigma = UnicodeScalarMath.valid(0x3C2)
 
     public static func lowercase(_ scalars: [Unicode.Scalar]) -> [Unicode.Scalar] {
         var out: [Unicode.Scalar] = []
         out.reserveCapacity(scalars.count)
         for (i, s) in scalars.enumerated() {
             if s.value < 0x80 {
-                out.append(s.value >= 0x41 && s.value <= 0x5A ? validUnicodeScalar(s.value + 32) : s)
+                out.append(s.value >= 0x41 && s.value <= 0x5A ? UnicodeScalarMath.valid(s.value + 32) : s)
             } else if s.value == sigma {
                 out.append(isFinalSigma(scalars, at: i) ? finalSmallSigma : smallSigma)
             } else if s.properties.changesWhenLowercased {

@@ -49,6 +49,11 @@ let testSettings: [SwiftSetting] =
 // Dev-only tooling is gated behind `ADF_DEV` so consumers never resolve it.
 let isDev = Context.environment["ADF_DEV"] != nil
 
+// The libFuzzer kernel target is gated behind `ADF_FUZZ` so the default build never links a `main`-less
+// `-sanitize=fuzzer` executable. `-sanitize=fuzzer` is a Linux capability of the toolchain (the Darwin
+// SDK rejects it), so this is built + run in the Linux CI fuzz job. See `Sources/ADFKernelsFuzz`.
+let isFuzz = Context.environment["ADF_FUZZ"] != nil
+
 // Non-dev dependencies:
 //   • swift-syntax     — backs ADFMacroSupport (the shared macro-plugin helpers).
 //   • swift-collections — `HeapModule` backs the in-package ADTestKit `TestClock` sleeper queue.
@@ -101,6 +106,9 @@ let package = Package(
         .library(name: "ADTesting", targets: ["ADTesting"]),
         // Individual runtime tiers — link exactly what you need.
         .library(name: "ADFCore", targets: ["ADFCore"]),
+        // Runtime-dispatched SIMD byte kernels (JSON string scan, ASCII fold, byte search). Its own
+        // product so a consumer (e.g. HTTP) can link just this without the rest of ADFCore.
+        .library(name: "ADFKernels", targets: ["ADFKernels"]),
         .library(name: "ADFUnicode", targets: ["ADFUnicode"]),
         .library(name: "ADFText", targets: ["ADFText"]),
         .library(name: "ADFIO", targets: ["ADFIO"]),
@@ -116,8 +124,25 @@ let package = Package(
     dependencies: packageDependencies,
     targets: [
         // ── Runtime tiers ──
-        // ADFCore — pointer-level byte primitives; SE-0458 strict memory safety.
-        .target(name: "ADFCore", swiftSettings: kernelSettings, plugins: libraryBuildPlugins),
+        // ADFCore — pointer-level byte primitives; SE-0458 strict memory safety. Depends on ADFKernels
+        // for the shared runtime-dispatched SIMD scans (XML escape; UTF-8 validation widening). Acyclic:
+        // ADFKernels → CADFKernels only (its scalar fallback is self-contained, never imports ADFCore).
+        .target(
+            name: "ADFCore", dependencies: ["ADFKernels"], swiftSettings: kernelSettings,
+            plugins: libraryBuildPlugins),
+        // CADFKernels — runtime-dispatched SIMD byte kernels in C (per-function `__attribute__((target))`
+        // + `pthread_once` feature probe, extending the CCRC32 pattern). Default C-target convention
+        // (public `include/`), no linker/cSettings — `sysctl`/`getauxval`/`pthread` live in libSystem/glibc.
+        .target(name: "CADFKernels"),
+        // ADFKernels — the pure-Swift facade over CADFKernels; strict-memory-safe like ADFCore.
+        .target(
+            name: "ADFKernels", dependencies: ["CADFKernels"], swiftSettings: kernelSettings,
+            plugins: libraryBuildPlugins),
+        // ADFKernelsProbe — a standalone differential check (kernels vs scalar reference) + ISA-tier
+        // printer. Runs the x86_64 slice under Rosetta (`swift run --arch x86_64 ADFKernelsProbe`),
+        // which the in-process `swift test` loader cannot do cross-arch; also the per-arch CI smoke.
+        .executableTarget(
+            name: "ADFKernelsProbe", dependencies: ["ADFKernels"], swiftSettings: strictSettings),
         .target(
             name: "ADFUnicode", dependencies: ["ADFCore"], swiftSettings: strictSettings,
             plugins: libraryBuildPlugins),
@@ -133,7 +158,9 @@ let package = Package(
         // Runtime umbrella — re-exports every runtime tier (NOT ADFMacroSupport: swift-syntax stays opt-in).
         .target(
             name: "ADFoundation",
-            dependencies: ["ADFCore", "ADFIO", "ADFText", "ADFUnicode", "ADFMetrics", "ADConcurrency"],
+            dependencies: [
+                "ADFCore", "ADFKernels", "ADFIO", "ADFText", "ADFUnicode", "ADFMetrics", "ADConcurrency"
+            ],
             swiftSettings: strictSettings, plugins: libraryBuildPlugins),
 
         // ── Macro support (the one swift-syntax tier) ──
@@ -169,6 +196,9 @@ let package = Package(
         // ADTestKit package, so depending on it from ADFoundation's own tests is just an intra-package edge).
         .testTarget(
             name: "ADFCoreTests", dependencies: ["ADFCore", "ADTestKit"], swiftSettings: testSettings),
+        .testTarget(
+            name: "ADFKernelsTests", dependencies: ["ADFKernels", "ADTestKit"],
+            swiftSettings: testSettings),
         .testTarget(name: "ADFUnicodeTests", dependencies: ["ADFUnicode"], swiftSettings: testSettings),
         .testTarget(
             name: "ADFTextTests", dependencies: ["ADFText", "ADTestKit"], swiftSettings: testSettings),
@@ -185,13 +215,26 @@ let package = Package(
     ]
 )
 
+// libFuzzer kernel target (ADF_FUZZ-gated; Linux-CI-only — `-sanitize=fuzzer` is Darwin-rejected).
+// `-parse-as-library` because libFuzzer supplies `main`; the explicit product drives the link.
+if isFuzz {
+    package.targets.append(
+        .executableTarget(
+            name: "ADFKernelsFuzz",
+            dependencies: ["ADFKernels"],
+            swiftSettings: strictSettings + [
+                .unsafeFlags(["-parse-as-library", "-sanitize=fuzzer"])
+            ]))
+    package.products.append(.executable(name: "ADFKernelsFuzz", targets: ["ADFKernelsFuzz"]))
+}
+
 // ordo-one benchmark suite (ADF_DEV-gated).
 if isDev {
     package.targets.append(
         .executableTarget(
             name: "ADFoundationSuite",
             dependencies: [
-                "ADFCore", "ADFText",
+                "ADFCore", "ADFText", "ADFKernels",
                 .product(name: "Benchmark", package: "benchmark")
             ],
             path: "Benchmarks/ADFoundationSuite",

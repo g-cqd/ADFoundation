@@ -39,9 +39,15 @@ extension IOError: CustomStringConvertible {
     }
 }
 
-/// Builds an ``IOError`` capturing the current global `errno`. Use it at the
-/// `throw` site immediately after a failing syscall, before any other call can
-/// overwrite `errno`.
-func ioErrno(_ op: String) -> IOError {
-    IOError(errno: errno, op: op)
+extension IOError {
+    /// Builds an ``IOError`` capturing the current global `errno`. Use it at the `throw` site immediately
+    /// after a failing syscall, before any other call can overwrite `errno`. The platform `errno` is
+    /// module-qualified: inside this type's scope the struct's own `errno` property would shadow it.
+    static func capturingErrno(_ op: String) -> IOError {
+        #if canImport(Darwin)
+            return IOError(errno: Darwin.errno, op: op)
+        #elseif canImport(Glibc)
+            return IOError(errno: Glibc.errno, op: op)
+        #endif
+    }
 }

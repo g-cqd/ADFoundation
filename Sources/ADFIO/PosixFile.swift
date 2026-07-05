@@ -33,7 +33,7 @@ public final class PosixFile: @unchecked Sendable {
                 if create { flags |= O_CREAT }
         }
         let fd = path.withCString { unsafe open($0, flags, 0o644) }
-        guard fd >= 0 else { throw ioErrno("open(\(path))") }
+        guard fd >= 0 else { throw IOError.capturingErrno("open(\(path))") }
         self.fileDescriptor = fd
         self.closeOnDeinit = true
     }
@@ -50,7 +50,7 @@ public final class PosixFile: @unchecked Sendable {
 
     public func fileSize() throws(IOError) -> Int {
         var st = stat()
-        guard unsafe fstat(fileDescriptor, &st) == 0 else { throw ioErrno("fstat") }
+        guard unsafe fstat(fileDescriptor, &st) == 0 else { throw IOError.capturingErrno("fstat") }
         return Int(st.st_size)
     }
 
@@ -69,7 +69,7 @@ public final class PosixFile: @unchecked Sendable {
             #endif
             if n < 0 {
                 if errno == EINTR { continue }
-                throw ioErrno("pread")
+                throw IOError.capturingErrno("pread")
             }
             if n == 0 { throw IOError(errno: 0, op: "pread(short read at \(offset + done))") }
             done += n
@@ -89,7 +89,7 @@ public final class PosixFile: @unchecked Sendable {
             #endif
             if n < 0 {
                 if errno == EINTR { continue }
-                throw ioErrno("pwrite")
+                throw IOError.capturingErrno("pwrite")
             }
             // A zero-byte return for a non-empty request makes no forward progress; treat it as a
             // short write rather than spin forever (mirrors the `pread` short-read guard).
@@ -130,7 +130,7 @@ public final class PosixFile: @unchecked Sendable {
             }
             if n < 0 {
                 if errno == EINTR { continue }
-                throw ioErrno("pwritev")
+                throw IOError.capturingErrno("pwritev")
             }
             if n != total {
                 // Partial vectored write: finish the remainder element-wise.
@@ -160,7 +160,9 @@ public final class PosixFile: @unchecked Sendable {
             case .barrier:
                 #if canImport(Darwin)
                     if fcntl(fileDescriptor, F_BARRIERFSYNC) == -1 {
-                        guard fsync(fileDescriptor) == 0 else { throw ioErrno("fsync(barrier fallback)") }
+                        guard fsync(fileDescriptor) == 0 else {
+                            throw IOError.capturingErrno("fsync(barrier fallback)")
+                        }
                     }
                 #else
                     // Linux has no `F_BARRIERFSYNC`. `fdatasync` is the closest analogue:
@@ -168,18 +170,18 @@ public final class PosixFile: @unchecked Sendable {
                     // to the storage stack, which is the ordering guarantee the barrier
                     // profile relies on. It does not issue a device cache flush — that is
                     // exactly the barrier/full distinction Darwin draws.
-                    guard fdatasync(fileDescriptor) == 0 else { throw ioErrno("fdatasync(barrier)") }
+                    guard fdatasync(fileDescriptor) == 0 else { throw IOError.capturingErrno("fdatasync(barrier)") }
                 #endif
             case .full:
                 #if canImport(Darwin)
                     if fcntl(fileDescriptor, F_FULLFSYNC) == -1 {
-                        guard fsync(fileDescriptor) == 0 else { throw ioErrno("fsync(full fallback)") }
+                        guard fsync(fileDescriptor) == 0 else { throw IOError.capturingErrno("fsync(full fallback)") }
                     }
                 #else
                     // `F_FULLFSYNC` asks the drive to flush its cache; Linux exposes no
                     // portable userspace equivalent, so `fsync` is the strongest portable
                     // guarantee (already the Darwin fallback when `F_FULLFSYNC` is refused).
-                    guard fsync(fileDescriptor) == 0 else { throw ioErrno("fsync(full)") }
+                    guard fsync(fileDescriptor) == 0 else { throw IOError.capturingErrno("fsync(full)") }
                 #endif
         }
     }
@@ -208,11 +210,11 @@ public final class PosixFile: @unchecked Sendable {
             // `posix_fallocate` returns an error code, which we ignore.
             _ = posix_fallocate(fileDescriptor, off_t(current), off_t(minimumSize - current))
         #endif
-        guard ftruncate(fileDescriptor, off_t(minimumSize)) == 0 else { throw ioErrno("ftruncate") }
+        guard ftruncate(fileDescriptor, off_t(minimumSize)) == 0 else { throw IOError.capturingErrno("ftruncate") }
     }
 
     public func truncate(to size: Int) throws(IOError) {
-        guard ftruncate(fileDescriptor, off_t(size)) == 0 else { throw ioErrno("ftruncate") }
+        guard ftruncate(fileDescriptor, off_t(size)) == 0 else { throw IOError.capturingErrno("ftruncate") }
     }
 
     /// Toggles the unified-buffer-cache bypass for bulk load paths.

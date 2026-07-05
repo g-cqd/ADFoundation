@@ -1,3 +1,5 @@
+internal import ADFKernels
+
 /// RFC 3629 UTF-8 well-formedness. Rejects invalid lead/continuation bytes, overlong encodings,
 /// surrogate code points (U+D800–U+DFFF), and values above U+10FFFF.
 ///
@@ -77,39 +79,19 @@ public enum UTF8Validation {
     /// setup does not pay and scalar is used). Tuned from the benchmark crossover.
     @usableFromInline static let simdMinBytes = 16
 
-    /// Byte offset of the first malformed UTF-8 sequence in `bytes`, or `nil` if well-formed.
-    /// Adaptive: pure-ASCII runs are skipped 16 bytes at a time with a SIMD high-bit test; any
-    /// multi-byte sequence falls back to scalar validation. Result-identical to
-    /// ``firstInvalidByteScalar(_:)``.
+    /// Byte offset of the first malformed UTF-8 sequence in `bytes`, or `nil` if well-formed. Routes to
+    /// the runtime-dispatched SIMD kernel (`ADFKernels.firstInvalidUTF8`, a simdjson/Lemire validator
+    /// that checks multi-byte sequences IN-VECTOR — unlike the former adaptive ASCII-skip, which fell to
+    /// scalar on any non-ASCII byte and so was ~21× slower on multibyte-dense text). Small buffers keep
+    /// the scalar path (below the SIMD setup crossover). Result-identical to ``firstInvalidByteScalar(_:)``.
     public static func firstInvalidByte(_ bytes: UnsafeRawBufferPointer) -> Int? {
         let n = bytes.count
         guard n >= simdMinBytes, let base = bytes.baseAddress else {
             return unsafe firstInvalidByteScalar(bytes)
         }
         let p = unsafe base.assumingMemoryBound(to: UInt8.self)
-        let highBits = SIMD16<UInt8>(repeating: 0x80)
-        // Density probe: the SIMD ASCII skip only pays on long ASCII runs. If the first chunk already
-        // holds a non-ASCII byte the input is multibyte-dense, where repeated 16-byte probes cost more
-        // than they save (benchmarked at 0.66–0.81×), so validate scalar instead.
-        let firstChunk = unsafe UnsafeRawPointer(p).loadUnaligned(as: SIMD16<UInt8>.self)
-        if (firstChunk & highBits).max() != 0 {
-            return unsafe firstInvalidByteScalar(bytes)
-        }
-        var i = 0
-        while i < n {
-            if unsafe p[i] < 0x80 {
-                while i + 16 <= n {
-                    let chunk = unsafe UnsafeRawPointer(p + i).loadUnaligned(as: SIMD16<UInt8>.self)
-                    if (chunk & highBits).max() != 0 { break }  // a non-ASCII byte lies in this chunk
-                    i += 16
-                }
-                while i < n, unsafe p[i] < 0x80 { i += 1 }
-            } else {
-                guard let length = unsafe sequenceLength(p, i, n) else { return i }
-                i += length
-            }
-        }
-        return nil
+        let index = unsafe ADFKernels.firstInvalidUTF8(base: p, count: n)
+        return index == n ? nil : index
     }
 
     /// `true` iff `bytes` is well-formed UTF-8 (adaptive SIMD path).

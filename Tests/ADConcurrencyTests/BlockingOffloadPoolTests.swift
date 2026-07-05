@@ -127,6 +127,26 @@ private func withDeadline<T: Sendable>(
         try await blocker.value
     }
 
+    /// A task ALREADY cancelled when `run` is entered must throw `CancellationError` and NOT execute
+    /// its body — the pre-cancelled edge. The task parks at a long sleep (a cancellation point) until
+    /// cancelled, so by the time it reaches `pool.run` it is guaranteed cancelled; the body setting
+    /// `ran` would fail the `#expect` if the pre-entry check were missing (which is exactly the bug
+    /// this guards: `onCancel` fires before the job is queued, so only the in-`run` check can catch it).
+    @Test func alreadyCancelledTaskThrowsWithoutRunningBody() async throws {
+        let pool = BlockingOffloadPool(width: 2)
+        defer { pool.shutdown() }
+        let ran = Atomic<Bool>(false)
+        let task = Task {
+            try? await Task.sleep(for: .seconds(3600))  // parks here until the cancel below fires
+            return try await pool.run { ran.store(true, ordering: .releasing); return 1 }
+        }
+        task.cancel()
+        _ = try await withDeadline(5000) {
+            await #expect(throws: CancellationError.self) { _ = try await task.value }
+        }
+        #expect(ran.load(ordering: .acquiring) == false)
+    }
+
     /// After `shutdown()` the pool refuses work (`poolShuttingDown`), and a second `shutdown()` is a
     /// no-op that returns immediately — the idempotency guard prevents a double-join deadlock.
     @Test func shutdownIsIdempotentAndRefusesFurtherWork() async throws {

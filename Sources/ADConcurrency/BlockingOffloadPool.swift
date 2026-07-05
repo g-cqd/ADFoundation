@@ -19,7 +19,9 @@ private import Synchronization
 /// enqueue/drain interleaving (the mistake a hand-rolled condition variable invites). `shutdown()`
 /// **joins** every worker (each signals an exit semaphore) before returning, so the owner can
 /// release the pool with no thread still touching it. The `run` queue is bounded (`maxDepth`), so a
-/// producer faster than the pool drains cannot grow memory without limit.
+/// producer faster than the pool drains cannot grow memory without limit — the `TaskExecutor.enqueue`
+/// path is *necessarily* exempt from that bound (the runtime cannot be back-pressured through a
+/// scheduling callback without stranding the job); see ``enqueue(_:)``.
 ///
 /// ## Use
 /// `await pool.run { blockingCall() }` runs the closure on a pool thread and suspends the caller
@@ -86,11 +88,21 @@ public final class BlockingOffloadPool: Sendable {
     }
 
     /// Run `body` on a pool thread; suspend the caller until it returns or throws. Cancelling the
-    /// awaiting task before the job starts removes it from the queue and throws `CancellationError`.
+    /// awaiting task before the job starts removes it from the queue and throws `CancellationError`;
+    /// a task ALREADY cancelled when `run` is entered is likewise honored (its `body` never runs).
     public func run<T: Sendable>(_ body: @escaping @Sendable () throws -> T) async throws -> T {
         let id = nextJobID()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
+                // Already-cancelled-on-entry: `withTaskCancellationHandler` fires `onCancel` before this
+                // closure runs, but the job is not in the queue yet, so `onCancel` removed nothing.
+                // Honor the cancellation here instead of running `body`. Because we return WITHOUT
+                // admitting, the job never enters the queue, so `onCancel` can never find it either —
+                // this branch owns the (single) resume with no race against the removal path.
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
                 let job = Job(
                     id: id,
                     work: { continuation.resume(with: Result { try body() }) },
@@ -156,11 +168,30 @@ public final class BlockingOffloadPool: Sendable {
 extension BlockingOffloadPool: TaskExecutor {
     /// `TaskExecutor` requirement: run a runtime job on a pool thread, so async work under
     /// `withTaskExecutorPreference(self)` executes here (width-bounded) instead of the cooperative
-    /// pool. Never drops a job — at shutdown it runs inline rather than leak a task into a hang.
+    /// pool.
+    ///
+    /// ## Why this path does NOT enforce `maxDepth`
+    /// Unlike ``run(_:)`` (whose caller `admit` can refuse with `SubmissionError.queueFull` and shed
+    /// load), `enqueue` is the Swift runtime's fire-and-forget scheduling callback: the runtime has
+    /// ALREADY committed this job to this executor and offers no way to signal back-pressure or
+    /// refusal. Dropping or bouncing the job would STRAND the owning task forever (it would never
+    /// resume) — a forward-progress violation far worse than an over-deep queue. So the only safe
+    /// overflow policy here is to **accept unconditionally**; `maxDepth` is therefore a bound on the
+    /// ``run(_:)`` submission API only, not on the executor path. This is not a leak in practice:
+    /// the depth of this queue is bounded by the number of live tasks the caller has placed under
+    /// `withTaskExecutorPreference(self)`, which the caller controls. Running the job inline when
+    /// "full" is deliberately NOT done — that would execute blocking work on the enqueuing
+    /// (cooperative-pool) thread, reintroducing the exact starvation this pool exists to prevent.
+    ///
+    /// The one inline-run case is shutdown: once `stopping`, no worker will drain new jobs, so running
+    /// inline is the only way to keep the task making progress instead of hanging. Never drops a job.
     public func enqueue(_ job: consuming ExecutorJob) {
         let unowned = UnownedJob(job)
         let executor = asUnownedTaskExecutor()
         let queued = state.withLock { state -> Bool in
+            // Deliberately no `maxDepth` guard here (see the doc above): the runtime cannot be
+            // back-pressured through `enqueue`, so refusing a job would strand its task. Only
+            // `stopping` gates acceptance, and that path still runs the job (inline, below).
             guard !state.stopping else { return false }
             let id = state.nextID
             state.nextID &+= 1

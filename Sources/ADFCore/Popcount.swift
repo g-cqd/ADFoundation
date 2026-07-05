@@ -1,3 +1,5 @@
+internal import ADFKernels
+
 /// Population count (set-bit count) and packed-bit Hamming distance — family-wide bit primitives.
 ///
 /// The semantic-search tier sign-quantizes embeddings to packed bit vectors and ranks them by
@@ -45,31 +47,30 @@ public enum Popcount {
         return t
     }()
 
-    /// Hamming distance (`Σ popcount(a[i] ^ b[i])`) between two `count`-byte packed bit vectors via
-    /// the SWAR path: 8 bytes per step, then the `< 8`-byte remainder. Never reads past `count`.
-    /// Endianness-agnostic — both sides load identically, and popcount is order-free over the XOR.
+    /// Hamming distance (`Σ popcount(a[i] ^ b[i])`) between two `count`-byte packed bit vectors, via the
+    /// runtime-dispatched SIMD kernel (NEON `cnt` on arm64, hardware `POPCNT` on x86-64, SWAR fallback).
+    /// The distance is an exact integer, so it is bit-identical to the byte-LUT reference regardless of
+    /// backend. Never reads past `count`. Endianness-agnostic — popcount is order-free over the XOR.
     @inlinable
     public static func hammingDistance(
         _ a: UnsafeRawBufferPointer, _ b: UnsafeRawBufferPointer, count: Int
     ) -> Int {
-        // Owner/bounds: caller owns `a[0 ..< count]` and `b[0 ..< count]`; both are read-only and
-        // never escape. The word + remainder loops never read past `count`.
+        // Owner/bounds: caller owns `a[0 ..< count]` and `b[0 ..< count]`; both are read-only, never
+        // escape, and the kernel never reads past `count`.
         assert(count >= 0, "Popcount.hammingDistance requires a non-negative count")
-        var distance = 0
-        var i = 0
-        while i &+ 8 <= count {
-            let wa = unsafe a.loadUnaligned(fromByteOffset: i, as: UInt64.self)
-            let wb = unsafe b.loadUnaligned(fromByteOffset: i, as: UInt64.self)
-            distance &+= Self.count(wa ^ wb)
-            i &+= 8
-        }
-        while i < count {
-            let xa = unsafe a.loadUnaligned(fromByteOffset: i, as: UInt8.self)
-            let xb = unsafe b.loadUnaligned(fromByteOffset: i, as: UInt8.self)
-            distance &+= Int(table256[Int(xa ^ xb)])
-            i &+= 1
-        }
-        return distance
+        return unsafe hammingDistanceKernel(a, b, count)
+    }
+
+    /// Bridges the raw buffers to `ADFKernels.hammingDistance` (kept out of the `@inlinable` surface so
+    /// only an internal import of `ADFKernels` is needed).
+    @usableFromInline
+    static func hammingDistanceKernel(
+        _ a: UnsafeRawBufferPointer, _ b: UnsafeRawBufferPointer, _ count: Int
+    ) -> Int {
+        guard count > 0, let baseA = a.baseAddress, let baseB = b.baseAddress else { return 0 }
+        let pointerA = unsafe baseA.assumingMemoryBound(to: UInt8.self)
+        let pointerB = unsafe baseB.assumingMemoryBound(to: UInt8.self)
+        return unsafe ADFKernels.hammingDistance(pointerA, pointerB, count: count)
     }
 
     /// Hamming distance via the byte-LUT reference path — one table lookup per differing byte, the

@@ -168,6 +168,35 @@ private func makeTempPath() -> String {
         #expect(map.capacity == 64)
     }
 
+    /// The additive, lifetime-checked `withRegion` accessor vends a `RawSpan` over the same bytes as
+    /// the unchecked `region`, and its `offset` arithmetic matches. Guards the safe scoped path added
+    /// alongside `region` (which stays for zero-copy callers holding pointers across the map's life).
+    @Test func withRegionVendsAScopedSpanMatchingTheUncheckedView() throws {
+        let path = makeTempPath()
+        let file = try PosixFile(path: path, mode: .readWrite(create: true))
+        defer {
+            file.close()
+            _ = path.withCString { unlink($0) }
+        }
+        let payload = [UInt8](0 ..< 64)
+        try payload.withUnsafeBytes { try file.pwrite($0, at: 0) }
+        try file.sync(.barrier)
+
+        let map = try RawFileMap(fileDescriptor: file.fileDescriptor, capacity: 64)
+        // Full window: reading the span inside the closure reproduces every file byte.
+        let copied: [UInt8] = map.withRegion(offset: 0, count: 64) { span in
+            #expect(span.byteCount == 64)
+            return (0 ..< span.byteCount).map { span.unsafeLoad(fromByteOffset: $0, as: UInt8.self) }
+        }
+        #expect(copied == payload)
+        // A sub-window at a non-zero offset must match the equivalent `region` slice byte-for-byte.
+        let mid: [UInt8] = map.withRegion(offset: 8, count: 4) { span in
+            (0 ..< span.byteCount).map { span.unsafeLoad(fromByteOffset: $0, as: UInt8.self) }
+        }
+        #expect(mid == Array(payload[8 ..< 12]))
+        #expect(mid == Array(map.region(offset: 8, count: 4)))
+    }
+
     @Test func prefetchClampsAndIgnoresOutOfRange() throws {
         let path = makeTempPath()
         let file = try PosixFile(path: path, mode: .readWrite(create: true))

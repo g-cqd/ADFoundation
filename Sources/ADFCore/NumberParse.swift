@@ -116,12 +116,19 @@ public enum NumberParse {
             }
         }
 
-        if !overlong, let value = DecimalFloat.double(significand: significand, exponent: exponent, negative: negative)
-        {
-            return value
+        if !overlong {
+            if let value = DecimalFloat.double(significand: significand, exponent: exponent, negative: negative) {
+                return value
+            }
+            // Outside Clinger's exact domain (significand > 2^53 or |exponent| > 22) but still <= 19
+            // digits: Eisel-Lemire rounds it correctly without building a `String`, deferring to the
+            // stdlib parser below only for the rare case it cannot prove correct.
+            if let value = DecimalFloat.eiselLemire(significand: significand, exponent: exponent, negative: negative) {
+                return value
+            }
         }
-        // Rare path: an over-long literal, or one outside the exact fast-path domain. The recognized
-        // slice (digits only, no sign) is a well-formed numeral the stdlib parser rounds correctly.
+        // Rare path: an over-long literal, or one Eisel-Lemire could not resolve. The recognized slice
+        // (digits only, no sign) is a well-formed numeral the stdlib parser rounds correctly.
         guard let magnitude = Double(String(decoding: bytes[digitsStart ..< i], as: UTF8.self)) else {
             return nil
         }

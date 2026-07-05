@@ -1,4 +1,5 @@
 import ADFCore
+import ADFKernels
 import ADFText
 import Benchmark
 
@@ -20,6 +21,16 @@ private func nearStrings(_ n: Int, edits k: Int) -> (a: [UInt8], b: [UInt8]) {
 }
 
 private func asciiBytes(_ n: Int) -> [UInt8] { [UInt8](repeating: UInt8(ascii: "a"), count: n) }
+
+// Realistic plain ASCII string content (mixed case + digits + spaces, no quote/backslash/control/
+// non-ASCII), so `foldASCII` lowercases a fraction and `indexOfStringStop` scans the full length —
+// the worst case for scalar and the best case for the SIMD fast-forward.
+private func contentBytes(_ n: Int) -> [UInt8] {
+    var out: [UInt8] = []
+    let unit = Array("The Quick Brown Fox jumps 0123 ".utf8)
+    while out.count < n { out += unit }
+    return Array(out.prefix(n))
+}
 
 private func mixedBytes(_ n: Int) -> [UInt8] {
     var out: [UInt8] = []
@@ -144,6 +155,85 @@ nonisolated(unsafe) let benchmarks = {
         }
         Benchmark("utf8/adaptive mixed \(n)") { bm in
             for _ in bm.scaledIterations { blackHole(UTF8Validation.firstInvalidByte(mixed) ?? -1) }
+        }
+    }
+
+    // MARK: SIMD kernels — the scalar C reference (the differential-test oracle) vs the runtime-
+    // dispatched backend (NEON/dotprod on arm64, SSE2/SSE4.2/AVX2 on x86-64, selected once at runtime).
+    // `foldASCII` over mixed-case content; `string-stop` over long plain content (the JSON tape-scan
+    // hot loop). The scalar-vs-fastest crossover is what justifies the kernel shipping at each size.
+    let stopQuote = UInt8(ascii: "\"")
+    let stopEscape = UInt8(ascii: "\\")
+    for n in [64, 256, 4096] {
+        let content = contentBytes(n)
+        Benchmark("kernels/fold scalar \(n)") { bm in
+            for _ in bm.scaledIterations { blackHole(ADFKernels.foldedASCII(content, backend: .scalar)) }
+        }
+        Benchmark("kernels/fold fastest \(n)") { bm in
+            for _ in bm.scaledIterations { blackHole(ADFKernels.foldedASCII(content, backend: .fastest)) }
+        }
+        Benchmark("kernels/string-stop scalar \(n)") { bm in
+            for _ in bm.scaledIterations {
+                blackHole(ADFKernels.indexOfStringStop(content, quote: stopQuote, escape: stopEscape, backend: .scalar) ?? -1)
+            }
+        }
+        Benchmark("kernels/string-stop fastest \(n)") { bm in
+            for _ in bm.scaledIterations {
+                blackHole(ADFKernels.indexOfStringStop(content, quote: stopQuote, escape: stopEscape, backend: .fastest) ?? -1)
+            }
+        }
+    }
+
+    // MARK: hamming distance — the semantic-search KNN scan (a query vs a corpus of 64-byte / 512-bit
+    // sign-quantized embedding vectors). Scalar (POPCNT-lowered) vs the runtime-dispatched kernel
+    // (NEON `cnt`). This is the `ShortlistByHamming` / `MMR` per-query hot loop.
+    let hammingQuery = (0 ..< 64).map { UInt8(($0 &* 37) & 0xFF) }
+    let hammingCorpus = (0 ..< 1000).map { row in (0 ..< 64).map { UInt8((row &* 31 &+ $0 &* 53) & 0xFF) } }
+    Benchmark("kernels/hamming-scan scalar 1000x64") { bm in
+        for _ in bm.scaledIterations {
+            var sum = 0
+            hammingQuery.withUnsafeBufferPointer { pq in
+                guard let bq = pq.baseAddress else { return }
+                for vector in hammingCorpus {
+                    vector.withUnsafeBufferPointer { pv in
+                        guard let bv = pv.baseAddress else { return }
+                        sum += ADFKernels.hammingDistance(bq, bv, count: 64, backend: .scalar)
+                    }
+                }
+            }
+            blackHole(sum)
+        }
+    }
+    Benchmark("kernels/hamming-scan fastest 1000x64") { bm in
+        for _ in bm.scaledIterations {
+            var sum = 0
+            hammingQuery.withUnsafeBufferPointer { pq in
+                guard let bq = pq.baseAddress else { return }
+                for vector in hammingCorpus {
+                    vector.withUnsafeBufferPointer { pv in
+                        guard let bv = pv.baseAddress else { return }
+                        sum += ADFKernels.hammingDistance(bq, bv, count: 64, backend: .fastest)
+                    }
+                }
+            }
+            blackHole(sum)
+        }
+    }
+    // Batched scan: one dispatch over a contiguous corpus (the primitive KNN shortlisting should use).
+    let hammingFlat = (0 ..< 1000 * 64).map { UInt8(($0 &* 53 &+ 7) & 0xFF) }
+    Benchmark("kernels/hamming-scan batched 1000x64") { bm in
+        var out = [UInt32](repeating: 0, count: 1000)
+        for _ in bm.scaledIterations {
+            hammingQuery.withUnsafeBufferPointer { pq in
+                hammingFlat.withUnsafeBufferPointer { pc in
+                    out.withUnsafeMutableBufferPointer { po in
+                        guard let bq = pq.baseAddress, let bc = pc.baseAddress, let bo = po.baseAddress
+                        else { return }
+                        ADFKernels.hammingScan(query: bq, corpus: bc, width: 64, count: 1000, into: bo)
+                    }
+                }
+            }
+            blackHole(out[0])
         }
     }
 

@@ -1,6 +1,101 @@
 import Dispatch
-public import Foundation  // Thread; QualityOfService appears in the public init signature
 private import Synchronization
+
+// pthread, not Foundation.Thread: Thread lives in corelibs Foundation, and this
+// module sits in the dependency graph of tools that build against
+// FoundationEssentials on Linux — one `import Foundation` here re-links
+// ~47 MiB of ICU into every one of their binaries. The pool needs exactly one
+// thing from Thread (spawn a named, QoS-classed OS thread), which pthread
+// provides on every supported platform.
+#if canImport(Darwin)
+    private import Darwin
+#else
+    private import Glibc
+#endif
+
+/// Scheduling class for the pool's worker threads.
+///
+/// A stand-in for `Foundation.QualityOfService`, which would drag corelibs
+/// Foundation into the public signature. On Darwin each case maps onto the
+/// matching `qos_class_t`; elsewhere QoS classes do not exist and the value is
+/// accepted for API compatibility but has no effect (the same behaviour
+/// corelibs `Thread.qualityOfService` had).
+public enum WorkerQualityOfService: Sendable {
+    case userInteractive
+    case userInitiated
+    case utility
+    case background
+    case `default`
+
+    #if canImport(Darwin)
+        fileprivate var qosClass: qos_class_t {
+            switch self {
+                case .userInteractive: QOS_CLASS_USER_INTERACTIVE
+                case .userInitiated: QOS_CLASS_USER_INITIATED
+                case .utility: QOS_CLASS_UTILITY
+                case .background: QOS_CLASS_BACKGROUND
+                case .default: QOS_CLASS_DEFAULT
+            }
+        }
+    #endif
+}
+
+/// The closure a spawned worker runs, boxed so it can cross the C boundary of
+/// `pthread_create` as a single retained opaque pointer.
+private final class WorkerEntry {
+    let name: String
+    let body: () -> Void
+    init(name: String, body: @escaping () -> Void) {
+        self.name = name
+        self.body = body
+    }
+}
+
+/// Spawns a detached OS thread running `entry.body`, named and (on Darwin)
+/// QoS-classed. The pool joins its workers through its own exit semaphore, so
+/// the pthread itself is created detached — nothing ever `pthread_join`s it.
+///
+/// `unsafe`: `pthread_create` is a C pointer API. The invariant is local: the
+/// box is passed retained and consumed exactly once by the entry function, and
+/// the C entry signature matches the platform's declaration exactly.
+private func spawnWorker(_ entry: WorkerEntry, quality: WorkerQualityOfService) {
+    let retained = unsafe Unmanaged.passRetained(entry).toOpaque()
+    #if canImport(Darwin)
+        var attributes = pthread_attr_t()
+        pthread_attr_init(&attributes)
+        pthread_attr_setdetachstate(&attributes, PTHREAD_CREATE_DETACHED)
+        pthread_attr_set_qos_class_np(&attributes, quality.qosClass, 0)
+        var thread: pthread_t?
+        _ = unsafe pthread_create(
+            &thread, &attributes,
+            { raw in
+                let box = unsafe Unmanaged<WorkerEntry>.fromOpaque(raw).takeRetainedValue()
+                box.name.withCString { _ = pthread_setname_np($0) }
+                box.body()
+                return nil
+            }, retained)
+        pthread_attr_destroy(&attributes)
+    #else
+        _ = quality  // no QoS classes off Darwin; accepted for API compatibility
+        var attributes = pthread_attr_t()
+        pthread_attr_init(&attributes)
+        pthread_attr_setdetachstate(&attributes, Int32(PTHREAD_CREATE_DETACHED))
+        var thread = pthread_t()
+        _ = unsafe pthread_create(
+            &thread, &attributes,
+            { raw in
+                let box = unsafe Unmanaged<WorkerEntry>.fromOpaque(raw!).takeRetainedValue()
+                // Linux caps thread names at 15 characters + NUL.
+                String(box.name.prefix(15))
+                    .withCString {
+                        _ = pthread_setname_np(pthread_self(), $0)
+                    }
+                box.body()
+                return nil
+            }, retained)
+        pthread_attr_destroy(&attributes)
+    #endif
+}
 
 /// A bounded pool of dedicated OS threads that run BLOCKING work off Swift's cooperative thread
 /// pool, bridging each result back to `async`.
@@ -76,14 +171,16 @@ public final class BlockingOffloadPool: Sendable {
     ///   - qualityOfService: scheduling class for the worker threads. Blocking work a caller is
     ///     awaiting wants `.userInitiated` (the default, matching `WriterThread`); a background
     ///     consumer can lower it.
-    public init(width: Int, maxDepth: Int = 1024, qualityOfService: QualityOfService = .userInitiated) {
+    public init(
+        width: Int, maxDepth: Int = 1024,
+        qualityOfService: WorkerQualityOfService = .userInitiated
+    ) {
         self.width = max(1, width)
         self.maxDepth = max(1, maxDepth)
         for index in 0 ..< self.width {
-            let thread = Thread { [weak self] in self?.runLoop() }
-            thread.name = "BlockingOffloadPool-\(index)"
-            thread.qualityOfService = qualityOfService
-            thread.start()
+            spawnWorker(
+                WorkerEntry(name: "BlockingOffloadPool-\(index)") { [weak self] in self?.runLoop() },
+                quality: qualityOfService)
         }
     }
 

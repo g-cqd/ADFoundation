@@ -173,6 +173,11 @@ public enum ADFKernels {
     /// The offset within `base[0..<count]` of the first byte equal to any of `n0…n4` (repeat a needle
     /// to use fewer than five, e.g. an HTML text escaper passes `& < >` with `n3 = n4 = n0`), or
     /// `count` if none. `.scalar` forces the reference loop; any other backend uses the dispatched SIMD.
+    // The five needles are a fixed-arity SIMD contract, not a parameter list that grew: they load
+    // straight into vector lanes, and callers repeat a needle to use fewer. Passing them as a
+    // tuple or array would either add an indirection on the hot path or break 18 call sites
+    // across ADJSON / ADHTML / HTTP for a metric.
+    // swiftlint:disable:next function_parameter_count
     public static func firstIndexOfAny(
         base: UnsafePointer<UInt8>,
         count: Int,
@@ -211,6 +216,8 @@ public enum ADFKernels {
     /// The offset within `base[0..<count]` of the first byte that is a control byte (`< 0x20`) OR equal
     /// to any of `n0…n4` (repeat a needle to use fewer), or `count` if none. Bytes `>= 0x80` are not
     /// stops (a JSON serializer copies well-formed UTF-8 verbatim). `.scalar` forces the reference.
+    // Fixed-arity SIMD contract — see `firstIndexOfAny` above.
+    // swiftlint:disable:next function_parameter_count
     public static func indexOfControlOrAny(
         base: UnsafePointer<UInt8>,
         count: Int,

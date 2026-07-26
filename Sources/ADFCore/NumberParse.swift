@@ -94,26 +94,9 @@ public enum NumberParse {
         guard sawDigit else { return nil }
 
         // Exponent: consumed only when well-formed (digits follow the optional sign).
-        if i < end, bytes[i] == 0x65 || bytes[i] == 0x45 {  // e / E
-            var j = i + 1
-            var expNegative = false
-            if j < end, bytes[j] == plus || bytes[j] == minus {
-                expNegative = bytes[j] == minus
-                j += 1
-            }
-            var expValue = 0
-            var sawExpDigit = false
-            while j < end, isDigit(bytes[j]) {
-                // Clamp so a pathological exponent can't overflow `Int`; anything ≥ 1e6 is far outside the
-                // ±22 the fast path accepts, so the clamp only routes it to the (correct) fallback.
-                if expValue < 1_000_000 { expValue = expValue * 10 + Int(bytes[j] - 0x30) }
-                sawExpDigit = true
-                j += 1
-            }
-            if sawExpDigit {
-                exponent += expNegative ? -expValue : expValue
-                i = j
-            }
+        if let suffix = exponentSuffix(bytes, from: i, end: end) {
+            exponent += suffix.delta
+            i = suffix.next
         }
 
         if !overlong {
@@ -133,6 +116,35 @@ public enum NumberParse {
             return nil
         }
         return negative ? -magnitude : magnitude
+    }
+
+    /// Scans a well-formed exponent suffix — `e`/`E`, an optional sign, then at least one digit —
+    /// starting at `from`. Returns the signed exponent delta and the index just past the suffix.
+    ///
+    /// Returns `nil` when the suffix is absent *or* malformed, in which case the caller consumes
+    /// nothing: `"1e"` parses as `1` with the `e` left unread, per the documented prefix contract.
+    /// `@inline(__always)` so extracting it out of `doublePrefix` stays codegen-neutral.
+    @inlinable
+    @inline(__always)
+    static func exponentSuffix(_ bytes: [UInt8], from: Int, end: Int) -> (delta: Int, next: Int)? {
+        guard from < end, bytes[from] == 0x65 || bytes[from] == 0x45 else { return nil }  // e / E
+        var j = from + 1
+        var negative = false
+        if j < end, bytes[j] == plus || bytes[j] == minus {
+            negative = bytes[j] == minus
+            j += 1
+        }
+        var value = 0
+        var sawDigit = false
+        while j < end, isDigit(bytes[j]) {
+            // Clamp so a pathological exponent can't overflow `Int`; anything ≥ 1e6 is far outside the
+            // ±22 the fast path accepts, so the clamp only routes it to the (correct) fallback.
+            if value < 1_000_000 { value = value * 10 + Int(bytes[j] - 0x30) }
+            sawDigit = true
+            j += 1
+        }
+        guard sawDigit else { return nil }
+        return (negative ? -value : value, j)
     }
 
     /// Parses a leading `Int`: optional whitespace, optional sign, then digits in `radix` (`2...36`).

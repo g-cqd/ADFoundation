@@ -30,7 +30,11 @@ private func requireInvariants(
     }
 }
 
+// The libFuzzer entry point is a single C-ABI function by construction: it derives every kernel
+// parameter from one input buffer and then drives each kernel in turn. Splitting it would only
+// scatter that one linear script. Unshipped (ADF_FUZZ-gated, Linux-CI only).
 @_cdecl("LLVMFuzzerTestOneInput")
+// swiftlint:disable:next function_body_length
 public func LLVMFuzzerTestOneInput(_ start: UnsafePointer<UInt8>?, _ count: Int) -> CInt {
     guard let start, count > 0 else { return 0 }
 

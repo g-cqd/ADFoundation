@@ -14,9 +14,9 @@
 import ADFKernels
 
 #if canImport(Darwin)
-import Darwin
+    import Darwin
 #elseif canImport(Glibc)
-import Glibc
+    import Glibc
 #endif
 
 // Deterministic xorshift64 — no test-kit dependency, so the probe stays a leaf executable.
@@ -70,7 +70,7 @@ func report(_ label: String, bytes: Int, scalarNanos: Double, fastestNanos: Doub
 
 func runBench() {
     let n = 1 << 16  // 64 KiB — long runs, where the vector fast-forward dominates.
-    var content = [UInt8]()
+    var content: [UInt8] = []
     let unit = Array("The Quick Brown Fox jumps 0123 ".utf8)
     while content.count < n { content += unit }
     content = Array(content.prefix(n))
@@ -136,7 +136,10 @@ for offset in 0 ..< 48 {
             checks += 2
             if ADFKernels.foldedASCII(foldInput, backend: backend) != foldExpected { failures += 1 }
             if ADFKernels.indexOfStringStop(stopInput, quote: quote, escape: escape, backend: backend)
-                != stopExpected { failures += 1 }
+                != stopExpected
+            {
+                failures += 1
+            }
         }
     }
 }
@@ -145,7 +148,7 @@ for offset in 0 ..< 48 {
 var rng = XorShift64(state: 0x1234_5678_9ABC_DEF1)
 for _ in 0 ..< 6000 {
     let count = rng.int(90)
-    var input = [UInt8]()
+    var input: [UInt8] = []
     input.reserveCapacity(count)
     for _ in 0 ..< count {
         input.append(rng.int(4) == 0 ? UInt8(rng.int(256)) : UInt8(0x20 + rng.int(0x5F)))
@@ -158,7 +161,10 @@ for _ in 0 ..< 6000 {
         checks += 3
         if ADFKernels.foldedASCII(input, backend: backend) != foldExpected { failures += 1 }
         if ADFKernels.indexOfStringStop(input, quote: quote, escape: escape, backend: backend)
-            != stopExpected { failures += 1 }
+            != stopExpected
+        {
+            failures += 1
+        }
         if ADFKernels.firstIndexOfByte(byteNeedle, in: input, backend: backend) != byteExpected {
             failures += 1
         }
@@ -172,7 +178,10 @@ for _ in 0 ..< 6000 {
     for i in input.indices {
         let x = input[i]
         if x >= 0x80 { continue }
-        if x == 0x7F || (x < 0x20 && x != 0x09) { disallowedExpected = i; break }
+        if x == 0x7F || (x < 0x20 && x != 0x09) {
+            disallowedExpected = i
+            break
+        }
     }
     checks += 5
     if ADFKernels.firstNonASCII(input) != nonAsciiExpected { failures += 1 }
@@ -187,7 +196,10 @@ for _ in 0 ..< 6000 {
         if (dt == n ? nil : dt) != disallowedExpected { failures += 1 }
         // firstInvalidUTF8: SIMD (SSE under Rosetta / NEON native) vs scalar oracle.
         if ADFKernels.firstInvalidUTF8(base: base, count: n)
-            != ADFKernels.firstInvalidUTF8(base: base, count: n, backend: .scalar) { failures += 1 }
+            != ADFKernels.firstInvalidUTF8(base: base, count: n, backend: .scalar)
+        {
+            failures += 1
+        }
     }
 }
 
@@ -195,7 +207,7 @@ for _ in 0 ..< 6000 {
 do {
     let unit = Array("café 日本語 😀 résumé ".utf8)
     for reps in 1 ... 400 {
-        var bytes = [UInt8]()
+        var bytes: [UInt8] = []
         for _ in 0 ..< reps { bytes += unit }
         checks += 1
         let fast = ADFKernels.firstInvalidUTF8(bytes, backend: .fastest)
@@ -211,8 +223,12 @@ do {
     let widths = [1, 8, 16, 64, 100, 257]
     for _ in 0 ..< 3000 {
         let width = widths[hrng.int(widths.count)]
-        var a = [UInt8](); var b = [UInt8]()
-        for _ in 0 ..< width { a.append(UInt8(hrng.int(256))); b.append(UInt8(hrng.int(256))) }
+        var a: [UInt8] = []
+        var b: [UInt8] = []
+        for _ in 0 ..< width {
+            a.append(UInt8(hrng.int(256)))
+            b.append(UInt8(hrng.int(256)))
+        }
         var reference = 0
         for i in 0 ..< width { reference += Int((a[i] ^ b[i]).nonzeroBitCount) }
         checks += 2

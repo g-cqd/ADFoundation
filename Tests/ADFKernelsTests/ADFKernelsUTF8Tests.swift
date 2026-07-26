@@ -67,7 +67,8 @@ struct ADFKernelsUTF8Tests {
             for _ in 0 ..< rng.int(12) { buffer += Self.units[rng.int(Self.units.count)] }
             if rng.int(3) == 0, !buffer.isEmpty { buffer[rng.int(buffer.count)] = UInt8(rng.int(256)) }
             if ADFKernels.firstInvalidUTF8(buffer, backend: .fastest)
-                != ADFKernels.firstInvalidUTF8(buffer, backend: .scalar) {
+                != ADFKernels.firstInvalidUTF8(buffer, backend: .scalar)
+            {
                 mismatches += 1
             }
         }
@@ -87,7 +88,8 @@ struct ADFKernelsUTF8Tests {
                     var buffer = [UInt8](repeating: UInt8(ascii: "a"), count: size)
                     buffer.insert(contentsOf: unit, at: offset)
                     if ADFKernels.firstInvalidUTF8(buffer, backend: .fastest)
-                        != ADFKernels.firstInvalidUTF8(buffer, backend: .scalar) {
+                        != ADFKernels.firstInvalidUTF8(buffer, backend: .scalar)
+                    {
                         mismatches += 1
                     }
                 }

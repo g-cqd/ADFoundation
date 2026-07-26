@@ -41,7 +41,7 @@ struct ADFKernelsDateTests {
             "2019-02-29T00:00:00Z",  // Feb 29 in a non-leap year
             "1582-06-15T00:00:00Z",  // Gregorian-reform year
             "0000-01-01T00:00:00Z",  // year < 1
-            "2020-1-1T0:0:0Z", "not-a-date-here-xxxx", "",
+            "2020-1-1T0:0:0Z", "not-a-date-here-xxxx", ""
         ]
         for s in deferred {
             #expect(parse(s) == nil, "should defer: \(s)")

@@ -29,21 +29,21 @@ struct EiselLemireTests {
         // denial-of-service case, ties-to-even at 2^53). Each is ≤ 19 significant digits, so Eisel–Lemire
         // is actually exercised (not short-circuited by the > 19-digit guard).
         let cases: [(UInt64, Int, Bool)] = [
-            (9007199254740992, 0, false),  // 2^53
-            (9007199254740993, 0, false),  // 2^53 + 1 → ties to even (…992)
-            (9007199254740995, 0, false),  // → …996
-            (9223372036854775807, 0, false),  // ~2^63
-            (9223372036854775807, 0, true),
+            (9_007_199_254_740_992, 0, false),  // 2^53
+            (9_007_199_254_740_993, 0, false),  // 2^53 + 1 → ties to even (…992)
+            (9_007_199_254_740_995, 0, false),  // → …996
+            (9_223_372_036_854_775_807, 0, false),  // ~2^63
+            (9_223_372_036_854_775_807, 0, true),
             (1, 22, false), (1, 23, false), (1, 300, false), (1, -300, false),
             (1, 308, false), (1, -308, false), (2, -308, false),
-            (17976931348623157, 292, false),  // Double.max: 1.7976931348623157e308
-            (22250738585072014, -324, false),  // min normal: 2.2250738585072014e-308
-            (22250738585072011, -324, false),  // the famous subnormal-boundary case
-            (10000000000000000000, 0, false),  // 1e19 (20 digits would overflow; this is the boundary)
-            (9999999999999999999, 0, false),  // 19 nines
-            (9999999999999999999, -19, false),  // ≈ 1.0 from the other side
-            (5000000000000000, -16, false), (5000000000000001, -16, false),
-            (0, 100, false), (0, -100, true),  // ±0 regardless of exponent
+            (17_976_931_348_623_157, 292, false),  // Double.max: 1.7976931348623157e308
+            (22_250_738_585_072_014, -324, false),  // min normal: 2.2250738585072014e-308
+            (22_250_738_585_072_011, -324, false),  // the famous subnormal-boundary case
+            (10_000_000_000_000_000_000, 0, false),  // 1e19 (20 digits would overflow; this is the boundary)
+            (9_999_999_999_999_999_999, 0, false),  // 19 nines
+            (9_999_999_999_999_999_999, -19, false),  // ≈ 1.0 from the other side
+            (5_000_000_000_000_000, -16, false), (5_000_000_000_000_001, -16, false),
+            (0, 100, false), (0, -100, true)  // ±0 regardless of exponent
         ]
         for (sig, exp, neg) in cases {
             #expect(mismatch(sig, exp, neg) == nil)
@@ -61,7 +61,7 @@ struct EiselLemireTests {
             "0.5000000000000001", "9007199254740993", "123456789012345678", "12345678901234567890",
             // > 19-digit hard-to-round monsters that must fall through to the correct stdlib parse:
             "123456789012345678901234567890", "9007199254740993.0000000000000001",
-            "2.47032822920623272e-308",
+            "2.47032822920623272e-308"
         ]
         for s in strings {
             #expect(NumberParse.doublePrefix(Array(s.utf8)) == Double(s), "mismatch for \(s)")
@@ -74,11 +74,11 @@ struct EiselLemireTests {
     @Test func everyTableEntryIsCorrect() {
         let sigs: [UInt64] = [
             1, 2, 3, 9, 10, 99,
-            1234567890123456789, 9999999999999999999, 5000000000000000000,
-            7071067811865475244, 3141592653589793238, 2718281828459045235,
+            1_234_567_890_123_456_789, 9_999_999_999_999_999_999, 5_000_000_000_000_000_000,
+            7_071_067_811_865_475_244, 3_141_592_653_589_793_238, 2_718_281_828_459_045_235
         ]
         var mismatches = 0
-        for exp in (-348)...347 {
+        for exp in (-348) ... 347 {
             for sig in sigs {
                 if mismatch(sig, exp, false) != nil { mismatches += 1 }
                 if mismatch(sig, exp, true) != nil { mismatches += 1 }
@@ -96,9 +96,9 @@ struct EiselLemireTests {
         var mismatches = 0
         var resolved = 0
         var firstFailure = ""
-        for _ in 0..<iterations {
-            let sig = UInt64.random(in: 0...9_999_999_999_999_999_999, using: &rng)
-            let exp = Int.random(in: -330...308, using: &rng)
+        for _ in 0 ..< iterations {
+            let sig = UInt64.random(in: 0 ... 9_999_999_999_999_999_999, using: &rng)
+            let exp = Int.random(in: -330 ... 308, using: &rng)
             let neg = Bool.random(using: &rng)
             if DecimalFloat.eiselLemire(significand: sig, exponent: exp, negative: neg) != nil {
                 resolved += 1
@@ -118,9 +118,9 @@ struct EiselLemireTests {
     @Test func roundTripsRandomDoubles() {
         var rng = SeededRNG(seed: 0xD0B1_E77E_15E1_5E1E)
         var mismatches = 0
-        for _ in 0..<200_000 {
+        for _ in 0 ..< 200_000 {
             // Draw a random finite double from a wide exponent range via raw bit patterns.
-            let bits = UInt64.random(in: 0...0x7FEF_FFFF_FFFF_FFFF, using: &rng)  // sign 0, exp < 0x7FF
+            let bits = UInt64.random(in: 0 ... 0x7FEF_FFFF_FFFF_FFFF, using: &rng)  // sign 0, exp < 0x7FF
             let d = Double(bitPattern: bits)
             let s = "\(d)"  // Swift's shortest round-tripping representation
             if let parsed = NumberParse.doublePrefix(Array(s.utf8)), parsed.bitPattern == d.bitPattern {

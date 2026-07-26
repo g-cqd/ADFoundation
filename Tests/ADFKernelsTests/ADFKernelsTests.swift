@@ -54,7 +54,7 @@ struct ADFKernelsTests {
         var mismatches = 0
         for _ in 0 ..< 4000 {
             let count = rng.int(70)
-            var input = [UInt8]()
+            var input: [UInt8] = []
             input.reserveCapacity(count)
             for _ in 0 ..< count { input.append(UInt8(rng.int(256))) }
             let expected = Self.referenceFold(input)
@@ -103,7 +103,9 @@ struct ADFKernelsTests {
         let expected = Self.referenceStop(input, UInt8(ascii: "="), UInt8(ascii: ";"))
         var mismatches = 0
         for backend in Self.backends
-        where ADFKernels.indexOfStringStop(input, quote: UInt8(ascii: "="), escape: UInt8(ascii: ";"), backend: backend) != expected {
+        where ADFKernels.indexOfStringStop(input, quote: UInt8(ascii: "="), escape: UInt8(ascii: ";"), backend: backend)
+            != expected
+        {
             mismatches += 1
         }
         #expect(mismatches == 0)
@@ -117,7 +119,7 @@ struct ADFKernelsTests {
         var mismatches = 0
         for _ in 0 ..< 4000 {
             let count = rng.int(80)
-            var input = [UInt8]()
+            var input: [UInt8] = []
             input.reserveCapacity(count)
             // Bias toward plain ASCII content so long clean runs (the vector fast-forward) dominate,
             // with occasional specials to exercise the precise-locate path.
@@ -140,7 +142,7 @@ struct ADFKernelsTests {
         var mismatches = 0
         for _ in 0 ..< 3000 {
             let count = rng.int(64)
-            var input = [UInt8]()
+            var input: [UInt8] = []
             input.reserveCapacity(count)
             for _ in 0 ..< count { input.append(UInt8(rng.int(16))) }  // small alphabet ⇒ frequent hits
             let needle = UInt8(rng.int(16))

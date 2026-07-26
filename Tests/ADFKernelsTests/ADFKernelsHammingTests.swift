@@ -37,8 +37,10 @@ struct ADFKernelsHammingTests {
         for _ in 0 ..< 500 {
             let width = [1, 16, 32, 64, 100][rng.int(5)]
             let count = 1 + rng.int(40)
-            var query = [UInt8](); for _ in 0 ..< width { query.append(UInt8(rng.int(256))) }
-            var corpus = [UInt8](); for _ in 0 ..< width * count { corpus.append(UInt8(rng.int(256))) }
+            var query: [UInt8] = []
+            for _ in 0 ..< width { query.append(UInt8(rng.int(256))) }
+            var corpus: [UInt8] = []
+            for _ in 0 ..< width * count { corpus.append(UInt8(rng.int(256))) }
             var out = [UInt32](repeating: 0, count: count)
             query.withUnsafeBufferPointer { pq in
                 corpus.withUnsafeBufferPointer { pc in
@@ -63,9 +65,14 @@ struct ADFKernelsHammingTests {
         let widths = [0, 1, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65, 100, 128, 257]
         for _ in 0 ..< 5000 {
             let width = widths[rng.int(widths.count)]
-            var a = [UInt8](); var b = [UInt8]()
-            a.reserveCapacity(width); b.reserveCapacity(width)
-            for _ in 0 ..< width { a.append(UInt8(rng.int(256))); b.append(UInt8(rng.int(256))) }
+            var a: [UInt8] = []
+            var b: [UInt8] = []
+            a.reserveCapacity(width)
+            b.reserveCapacity(width)
+            for _ in 0 ..< width {
+                a.append(UInt8(rng.int(256)))
+                b.append(UInt8(rng.int(256)))
+            }
             let expected = Self.referenceDistance(a, b)
             if Self.distance(a, b, .fastest) != expected { mismatches += 1 }
             if Self.distance(a, b, .scalar) != expected { mismatches += 1 }

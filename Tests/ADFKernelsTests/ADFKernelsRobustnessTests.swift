@@ -81,7 +81,7 @@ struct ADFKernelsRobustnessTests {
                 ADFKernels.firstDisallowedText(
                     base: base, count: count, minAllowed: 0x21, allowTab: false, backend: backend)
             },
-            predicate: { $0 < 0x80 && ($0 == 0x7F || $0 <= 0x20) }),
+            predicate: { $0 < 0x80 && ($0 == 0x7F || $0 <= 0x20) })
     ]
 
     static let boundarySizes = [0, 1, 2, 7, 8, 15, 16, 17, 30, 31, 32, 33, 47, 48, 63, 64, 65, 96, 128, 200]
@@ -140,7 +140,10 @@ struct ADFKernelsRobustnessTests {
                     let count = buffer.count
                     let result = kernel.run(base, count, .fastest)
                     // (a) in range.
-                    if result < 0 || result > count { violations += 1; return }
+                    if result < 0 || result > count {
+                        violations += 1
+                        return
+                    }
                     // (b) the byte AT the result satisfies the predicate (unless no match).
                     if result < count, !kernel.predicate(buffer[result]) { violations += 1 }
                     // (c) no earlier byte satisfies the predicate.
@@ -189,7 +192,7 @@ struct ADFKernelsRobustnessTests {
         let count = sizePool[rng.int(sizePool.count)]
         guard count > 0 else { return [] }
         let mode = rng.int(5)
-        var out = [UInt8]()
+        var out: [UInt8] = []
         out.reserveCapacity(count)
         for _ in 0 ..< count {
             switch mode {

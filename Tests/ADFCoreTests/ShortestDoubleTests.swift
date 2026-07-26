@@ -47,7 +47,7 @@ struct ShortestDoubleTests {
             1e20, 1e21, 1e22, 1e23, 1e-6, 1e-7, 123.456, 9_007_199_254_740_992, 9_007_199_254_740_994,
             .pi, -.pi, .greatestFiniteMagnitude, -.greatestFiniteMagnitude, .leastNormalMagnitude,
             .leastNonzeroMagnitude, 4.9406564584124654e-324, 2.2250738585072014e-308,
-            1.7976931348623157e308, 3.141592653589793, 2.718281828459045, 6.022e23, 1.602176634e-19,
+            1.7976931348623157e308, 3.141592653589793, 2.718281828459045, 6.022e23, 1.602176634e-19
         ]
         for v in cases {
             #expect(mismatch(v) == nil)
@@ -59,10 +59,10 @@ struct ShortestDoubleTests {
     @Test func sweepsExponentRange() {
         let mantissas: [UInt64] = [
             0, 1, 2, 0x000F_FFFF_FFFF_FFFF, 0x0008_0000_0000_0000, 0x000A_AAAA_AAAA_AAAA,
-            0x0005_5555_5555_5555, 0x0001_2345_6789_ABCD,
+            0x0005_5555_5555_5555, 0x0001_2345_6789_ABCD
         ]
         var mismatches = 0
-        for e in 0...0x7FE {
+        for e in 0 ... 0x7FE {
             for m in mantissas {
                 let bits = (UInt64(e) << 52) | m
                 if mismatch(Double(bitPattern: bits)) != nil { mismatches += 1 }
@@ -79,11 +79,11 @@ struct ShortestDoubleTests {
         let iterations = 1_000_000
         var mismatches = 0
         var firstFailure = ""
-        for _ in 0..<iterations {
+        for _ in 0 ..< iterations {
             // Any finite double: sign|exp|mantissa with exp in [0, 0x7FE].
-            let sign = UInt64.random(in: 0...1, using: &rng) << 63
-            let exp = UInt64.random(in: 0...0x7FE, using: &rng) << 52
-            let mant = UInt64.random(in: 0...0x000F_FFFF_FFFF_FFFF, using: &rng)
+            let sign = UInt64.random(in: 0 ... 1, using: &rng) << 63
+            let exp = UInt64.random(in: 0 ... 0x7FE, using: &rng) << 52
+            let mant = UInt64.random(in: 0 ... 0x000F_FFFF_FFFF_FFFF, using: &rng)
             let v = Double(bitPattern: sign | exp | mant)
             if let m = mismatch(v) {
                 mismatches += 1

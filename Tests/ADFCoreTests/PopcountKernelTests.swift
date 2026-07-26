@@ -11,8 +11,12 @@ struct PopcountKernelTests {
         var mismatches = 0
         for _ in 0 ..< 3000 {
             let width = widths[rng.int(widths.count)]
-            var a = [UInt8](); var b = [UInt8]()
-            for _ in 0 ..< width { a.append(UInt8(rng.int(256))); b.append(UInt8(rng.int(256))) }
+            var a: [UInt8] = []
+            var b: [UInt8] = []
+            for _ in 0 ..< width {
+                a.append(UInt8(rng.int(256)))
+                b.append(UInt8(rng.int(256)))
+            }
             let viaKernel = a.withUnsafeBytes { pa in
                 b.withUnsafeBytes { pb in Popcount.hammingDistance(pa, pb, count: width) }
             }

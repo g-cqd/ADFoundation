@@ -138,7 +138,10 @@ private func withDeadline<T: Sendable>(
         let ran = Atomic<Bool>(false)
         let task = Task {
             try? await Task.sleep(for: .seconds(3600))  // parks here until the cancel below fires
-            return try await pool.run { ran.store(true, ordering: .releasing); return 1 }
+            return try await pool.run {
+                ran.store(true, ordering: .releasing)
+                return 1
+            }
         }
         task.cancel()
         _ = try await withDeadline(5000) {

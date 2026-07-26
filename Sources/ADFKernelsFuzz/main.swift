@@ -36,21 +36,41 @@ public func LLVMFuzzerTestOneInput(_ start: UnsafePointer<UInt8>?, _ count: Int)
 
     // Steer the kernel parameters from an 8-byte prefix so the fuzzer can drive quote/escape/needles/
     // min/tab; the remainder is the buffer under test. Short inputs use defaults + the whole buffer.
-    let quote: UInt8, escape: UInt8, needle: UInt8, minAllowed: UInt8
-    let n0: UInt8, n1: UInt8, n2: UInt8, n3: UInt8, n4: UInt8
+    let quote: UInt8
+    let escape: UInt8
+    let needle: UInt8
+    let minAllowed: UInt8
+    let n0: UInt8
+    let n1: UInt8
+    let n2: UInt8
+    let n3: UInt8
+    let n4: UInt8
     let allowTab: Bool
     let bufferBase: UnsafePointer<UInt8>
     let bufferCount: Int
     if count >= 8 {
-        quote = start[0]; escape = start[1]
-        n0 = start[2]; n1 = start[3]; n2 = start[4]; n3 = start[5]; n4 = start[6]
-        minAllowed = start[7]; needle = start[2]
+        quote = start[0]
+        escape = start[1]
+        n0 = start[2]
+        n1 = start[3]
+        n2 = start[4]
+        n3 = start[5]
+        n4 = start[6]
+        minAllowed = start[7]
+        needle = start[2]
         allowTab = (start[0] & 1) == 1
         bufferBase = start + 8
         bufferCount = count - 8
     } else {
-        quote = 0x22; escape = 0x5C; needle = 0x2C; minAllowed = 0x20
-        n0 = 0x26; n1 = 0x3C; n2 = 0x3E; n3 = 0x22; n4 = 0x27
+        quote = 0x22
+        escape = 0x5C
+        needle = 0x2C
+        minAllowed = 0x20
+        n0 = 0x26
+        n1 = 0x3C
+        n2 = 0x3E
+        n3 = 0x22
+        n4 = 0x27
         allowTab = true
         bufferBase = start
         bufferCount = count

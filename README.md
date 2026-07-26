@@ -85,17 +85,12 @@ an `UnsafeRawBufferPointer` surface for now.
 
 ## Usage
 
-Consumers resolve ADFoundation by its published remote by default, or override to a local checkout
-via a per-dependency path environment variable — so the repositories need not live side by side:
+Consumers resolve ADFoundation from its published remote:
 
 ```swift
 // In a consumer's Package.swift:
 let adFoundation: Package.Dependency =
-    if let path = Context.environment["ADFOUNDATION_PATH"], !path.isEmpty {
-        .package(path: path)
-    } else {
-        .package(url: "https://github.com/g-cqd/ADFoundation.git", branch: "main")
-    }
+    .package(url: "https://github.com/g-cqd/ADFoundation.git", branch: "main")
 ```
 
 ```swift

@@ -69,12 +69,8 @@ var packageDependencies: [Package.Dependency] = [
 ]
 if isDev {
     // Shared lint/format tooling (Format/Lint/LintBuild plugins + canonical `.swift-format`).
-    if let path = Context.environment["ADBUILDTOOLS_PATH"], !path.isEmpty {
-        packageDependencies.append(.package(path: path))
-    } else {
-        packageDependencies.append(
-            .package(url: "https://github.com/g-cqd/ADBuildTools.git", branch: "main"))
-    }
+    packageDependencies.append(
+        .package(url: "https://github.com/g-cqd/ADBuildTools.git", branch: "main"))
     packageDependencies.append(
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.0.0"))
     // ordo-one benchmark suite (`ADF_DEV=1 swift package benchmark`).

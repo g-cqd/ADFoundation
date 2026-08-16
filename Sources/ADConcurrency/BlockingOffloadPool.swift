@@ -8,9 +8,11 @@ private import Synchronization
 // thing from Thread (spawn a named, QoS-classed OS thread), which pthread
 // provides on every supported platform.
 #if canImport(Darwin)
-    private import Darwin
+    internal import Darwin
 #else
-    private import Glibc
+    // internal, not private: MemberImportVisibility resolves `pthread_attr_t()`
+    // and friends against the importing module's visibility.
+    internal import Glibc
 #endif
 
 /// Scheduling class for the pool's worker threads.
@@ -77,23 +79,22 @@ private func spawnWorker(_ entry: WorkerEntry, quality: WorkerQualityOfService) 
         pthread_attr_destroy(&attributes)
     #else
         _ = quality  // no QoS classes off Darwin; accepted for API compatibility
-        var attributes = pthread_attr_t()
-        pthread_attr_init(&attributes)
-        pthread_attr_setdetachstate(&attributes, Int32(PTHREAD_CREATE_DETACHED))
+        // No pthread_attr_t: under MemberImportVisibility its initializer
+        // resolves to CDispatch, which this module deliberately does not
+        // import. Default attributes + pthread_detach is equivalent to
+        // creating detached.
         var thread = pthread_t()
         _ = unsafe pthread_create(
-            &thread, &attributes,
+            &thread, nil,
             { raw in
                 let box = unsafe Unmanaged<WorkerEntry>.fromOpaque(raw!).takeRetainedValue()
-                // Linux caps thread names at 15 characters + NUL.
-                String(box.name.prefix(15))
-                    .withCString {
-                        _ = pthread_setname_np(pthread_self(), $0)
-                    }
+                // No thread name off Darwin: pthread_setname_np is a GNU
+                // extension the Swift Glibc overlay does not export. The name
+                // is diagnostic sugar, not behaviour.
                 box.body()
                 return nil
             }, retained)
-        pthread_attr_destroy(&attributes)
+        pthread_detach(thread)
     #endif
 }
 

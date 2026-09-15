@@ -127,8 +127,10 @@ jobs:
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: |
           if [ "${{ matrix.sanitize }}" = "undefined" ]; then
-            # swiftbuild instruments the C targets but omits the UBSan runtime from the link.
-            swift test --build-system native --sanitize=undefined
+            # Swift's Linux frontend rejects UBSan. Instrument the C kernels and pass the
+            # same flag to Clang's linker so it supplies the matching sanitizer runtime.
+            swift test --build-system native -Xcc -fsanitize=undefined \
+              -Xswiftc -Xclang-linker -Xswiftc -fsanitize=undefined
           else
             swift test --sanitize=${{ matrix.sanitize }}
           fi

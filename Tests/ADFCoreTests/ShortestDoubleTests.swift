@@ -46,7 +46,7 @@ struct ShortestDoubleTests {
             0.0, -0.0, 1.0, -1.0, 2.0, 0.5, 0.1, 0.2, 0.3, 0.30000000000000004, 100.0, 1234.5,
             1e20, 1e21, 1e22, 1e23, 1e-6, 1e-7, 123.456, 9_007_199_254_740_992, 9_007_199_254_740_994,
             .pi, -.pi, .greatestFiniteMagnitude, -.greatestFiniteMagnitude, .leastNormalMagnitude,
-            .leastNonzeroMagnitude, 4.9406564584124654e-324, 2.2250738585072014e-308,
+            .leastNonzeroMagnitude, 2.2250738585072014e-308,
             1.7976931348623157e308, 3.141592653589793, 2.718281828459045, 6.022e23, 1.602176634e-19
         ]
         for v in cases {

@@ -1,16 +1,7 @@
 // swift-tools-version: 6.4
 import PackageDescription
 
-// ADFoundation — the umbrella package + the family's shared, finely-decomposed foundation tiers.
-// ONE package, MANY small targets (link exactly what you need), with two umbrella modules:
-//   • `import ADFoundation` — every zero-dependency RUNTIME tier (byte/number kernel, Unicode, text,
-//     POSIX IO, process metrics, and the concurrency seams).
-//   • `import ADTesting`    — the deterministic-testing kit (ADTestKit + ADTestKitSeams; the seams
-//     come transitively). The test-side mirror of the runtime umbrella.
-// Folded in (formerly standalone packages): ADConcurrency (zero-dep production seams + pools) and
-// ADTestKit (the testing kit). Keeping them as IN-PACKAGE targets dissolves the old
-// ADFoundation↔ADTestKit dependency cycle — ADFoundation's own tests now use the in-package kit
-// directly, so there is no external test-kit package to cycle with.
+// Compatibility products forward to the shared Aemi implementation.
 
 // Strict, dependency-safe settings applied to every Swift target. `.v6` turns on complete
 // strict-concurrency checking; the upcoming features tighten existentials (`any`) and import visibility.
@@ -22,11 +13,6 @@ let strictSettings: [SwiftSetting] = [
     .enableUpcomingFeature("InternalImportsByDefault"),
     .enableUpcomingFeature("MemberImportVisibility")
 ]
-
-// The byte/IO kernel additionally adopts SE-0458 strict memory safety + the compile-time-only
-// `Lifetimes` feature (no runtime-floor impact). Applied to the pointer/POSIX targets (ADFCore, ADFIO).
-let kernelSettings: [SwiftSetting] =
-    strictSettings + [.strictMemorySafety(), .enableExperimentalFeature("Lifetimes")]
 
 // Compile-time type-check timing warnings — unsafe flags, so they live only on test targets.
 // The budget is env-tunable because `treatAllWarnings(as: .error)` turns an overrun into a HARD
@@ -54,34 +40,20 @@ let isDev = Context.environment["ADF_DEV"] != nil
 // SDK rejects it), so this is built + run in the Linux CI fuzz job. See `Sources/ADFKernelsFuzz`.
 let isFuzz = Context.environment["ADF_FUZZ"] != nil
 
-// Non-dev dependencies:
-//   • swift-syntax     — backs ADFMacroSupport (the shared macro-plugin helpers).
-//   • swift-collections — `HeapModule` backs the in-package ADTestKit `TestClock` sleeper queue.
-//   • swift-system     — `SystemPackage` backs ADTestKit's typed temp-file paths.
-// The latter two enter the graph because the test kit now ships as a product of THIS package; a
-// consumer that links only a runtime tier (e.g. `ADFCore`) still does not BUILD them, but does
-// resolve them (SwiftPM resolution is package-granular). This is the accepted cost of the single
-// umbrella package over the previous separate ADConcurrency / ADTestKit repos.
+// SystemPackage is imported directly by the temporary-file compatibility tests.
 var packageDependencies: [Package.Dependency] = [
-    .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "603.0.0"),
-    .package(url: "https://github.com/apple/swift-collections.git", from: "1.6.0"),
+    .package(url: "https://github.com/Aemi-Studio/aemi.git", branch: "main"),
     .package(url: "https://github.com/apple/swift-system.git", from: "1.7.2")
 ]
 if isDev {
-    // Shared lint/format tooling (Format/Lint/LintBuild plugins + canonical `.swift-format`).
-    packageDependencies.append(
-        .package(url: "https://github.com/g-cqd/ADBuildTools.git", branch: "main"))
-    packageDependencies.append(
-        .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.0.0"))
     // ordo-one benchmark suite (`ADF_DEV=1 swift package benchmark`).
     packageDependencies.append(
         .package(url: "https://github.com/ordo-one/benchmark", from: "1.4.0"))
 }
 
 let libraryBuildPlugins: [Target.PluginUsage] =
-    isDev ? [.plugin(name: "LintBuild", package: "ADBuildTools")] : []
+    isDev ? [.plugin(name: "LintBuild", package: "aemi")] : []
 
-let heapModule: Target.Dependency = .product(name: "HeapModule", package: "swift-collections")
 let systemPackage: Target.Dependency = .product(name: "SystemPackage", package: "swift-system")
 
 let package = Package(
@@ -96,7 +68,7 @@ let package = Package(
         .visionOS(.v2)
     ],
     products: [
-        // Runtime umbrella: `import ADFoundation` → every zero-dependency runtime tier.
+        // Runtime umbrella forwards to AemiFoundation.
         .library(name: "ADFoundation", targets: ["ADFoundation"]),
         // Test umbrella: `import ADTesting` → the deterministic-testing kit (+ seams).
         .library(name: "ADTesting", targets: ["ADTesting"]),
@@ -119,79 +91,48 @@ let package = Package(
     ],
     dependencies: packageDependencies,
     targets: [
-        // ── Runtime tiers ──
-        // ADFCore — pointer-level byte primitives; SE-0458 strict memory safety. Depends on ADFKernels
-        // for the shared runtime-dispatched SIMD scans (XML escape; UTF-8 validation widening). Acyclic:
-        // ADFKernels → CADFKernels only (its scalar fallback is self-contained, never imports ADFCore).
         .target(
-            name: "ADFCore", dependencies: ["ADFKernels"], swiftSettings: kernelSettings,
-            plugins: libraryBuildPlugins),
-        // CADFKernels — runtime-dispatched SIMD byte kernels in C (per-function `__attribute__((target))`
-        // + `pthread_once` feature probe, extending the CCRC32 pattern). Default C-target convention
-        // (public `include/`), no linker/cSettings — `sysctl`/`getauxval`/`pthread` live in libSystem/glibc.
-        .target(name: "CADFKernels"),
-        // ADFKernels — the pure-Swift facade over CADFKernels; strict-memory-safe like ADFCore.
-        .target(
-            name: "ADFKernels", dependencies: ["CADFKernels"], swiftSettings: kernelSettings,
-            plugins: libraryBuildPlugins),
-        // ADFKernelsProbe — a standalone differential check (kernels vs scalar reference) + ISA-tier
-        // printer. Runs the x86_64 slice under Rosetta (`swift run --arch x86_64 ADFKernelsProbe`),
-        // which the in-process `swift test` loader cannot do cross-arch; also the per-arch CI smoke.
-        .executableTarget(
-            name: "ADFKernelsProbe", dependencies: ["ADFKernels"], swiftSettings: strictSettings),
-        .target(
-            name: "ADFUnicode", dependencies: ["ADFCore"], swiftSettings: strictSettings,
-            plugins: libraryBuildPlugins),
-        .target(
-            name: "ADFText", dependencies: ["ADFCore", "ADFUnicode"], swiftSettings: strictSettings,
-            plugins: libraryBuildPlugins),
-        .target(
-            name: "ADFIO", dependencies: ["ADFCore"], swiftSettings: kernelSettings,
-            plugins: libraryBuildPlugins),
-        .target(name: "ADFMetrics", swiftSettings: strictSettings, plugins: libraryBuildPlugins),
-        // ADConcurrency — zero-dep production seams (TaskProvider/Clock) + ResourcePool / BlockingOffloadPool.
-        .target(name: "ADConcurrency", swiftSettings: strictSettings, plugins: libraryBuildPlugins),
-        // Runtime umbrella — re-exports every runtime tier (NOT ADFMacroSupport: swift-syntax stays opt-in).
-        .target(
-            name: "ADFoundation",
-            dependencies: [
-                "ADFCore", "ADFKernels", "ADFIO", "ADFText", "ADFUnicode", "ADFMetrics", "ADConcurrency"
-            ],
+            name: "ADFCore", dependencies: [.product(name: "AemiKernel", package: "aemi")],
             swiftSettings: strictSettings, plugins: libraryBuildPlugins),
-
-        // ── Macro support (the one swift-syntax tier) ──
         .target(
-            name: "ADFMacroSupport",
-            dependencies: [
-                .product(name: "SwiftSyntax", package: "swift-syntax"),
-                .product(name: "SwiftDiagnostics", package: "swift-syntax")
-            ],
-            swiftSettings: strictSettings,
+            name: "ADFKernels", dependencies: [.product(name: "AemiKernels", package: "aemi")],
+            swiftSettings: strictSettings, plugins: libraryBuildPlugins),
+        .target(
+            name: "ADFUnicode", dependencies: [.product(name: "AemiUnicode", package: "aemi")],
+            swiftSettings: strictSettings, plugins: libraryBuildPlugins),
+        .target(
+            name: "ADFText", dependencies: [.product(name: "AemiText", package: "aemi")], swiftSettings: strictSettings,
             plugins: libraryBuildPlugins),
-
-        // ── Test tooling ──
-        // CADTestKitMalloc — C shim exposing process-wide heap-allocation counting (Darwin malloc_logger).
-        .target(name: "CADTestKitMalloc"),
-        // ADTestKitSeams — stable re-export of the ADConcurrency seams (`@_exported import ADConcurrency`).
         .target(
-            name: "ADTestKitSeams", dependencies: ["ADConcurrency"],
-            swiftSettings: strictSettings, plugins: libraryBuildPlugins),
-        // ADTestKit — the deterministic-testing kit (Testing-backed asserts, SeededRNG, Fuzz, oracles,
-        // TestClock/AsyncProbe, gates). HeapModule = TestClock sleeper queue; SystemPackage = temp files.
+            name: "ADFIO", dependencies: [.product(name: "AemiIO", package: "aemi")], swiftSettings: strictSettings,
+            plugins: libraryBuildPlugins),
         .target(
-            name: "ADTestKit",
-            dependencies: ["ADTestKitSeams", "CADTestKitMalloc", heapModule, systemPackage],
+            name: "ADFMetrics", dependencies: [.product(name: "AemiMetrics", package: "aemi")],
             swiftSettings: strictSettings, plugins: libraryBuildPlugins),
-        // ADTesting — test umbrella: one `import ADTesting` for a test target.
         .target(
-            name: "ADTesting", dependencies: ["ADTestKit", "ADTestKitSeams"],
+            name: "ADConcurrency", dependencies: [.product(name: "AemiRuntime", package: "aemi")],
             swiftSettings: strictSettings, plugins: libraryBuildPlugins),
+        .target(
+            name: "ADFMacroSupport", dependencies: [.product(name: "AemiMacroSupport", package: "aemi")],
+            swiftSettings: strictSettings, plugins: libraryBuildPlugins),
+        .target(
+            name: "ADTestKit", dependencies: [.product(name: "AemiTestKit", package: "aemi")],
+            swiftSettings: strictSettings, plugins: libraryBuildPlugins),
+        .target(
+            name: "ADTestKitSeams", dependencies: [.product(name: "AemiTestKitSeams", package: "aemi")],
+            swiftSettings: strictSettings, plugins: libraryBuildPlugins),
+        .target(
+            name: "ADFoundation", dependencies: [.product(name: "AemiFoundation", package: "aemi")],
+            swiftSettings: strictSettings, plugins: libraryBuildPlugins),
+        .target(
+            name: "ADTesting", dependencies: [.product(name: "AemiTestKit", package: "aemi")],
+            swiftSettings: strictSettings, plugins: libraryBuildPlugins),
+        .executableTarget(name: "ADFKernelsProbe", dependencies: ["ADFKernels"], swiftSettings: strictSettings),
 
         // ── Tests ──
-        // ADFCore / ADFText use the in-package kit's `SeededRNG` — the cycle-break in action (no external
-        // ADTestKit package, so depending on it from ADFoundation's own tests is just an intra-package edge).
         .testTarget(
-            name: "ADFCoreTests", dependencies: ["ADFCore", "ADTestKit"], swiftSettings: testSettings),
+            name: "ADFCoreTests", dependencies: ["ADFCore", "ADTestKit", .product(name: "AemiKernel", package: "aemi")],
+            swiftSettings: testSettings),
         .testTarget(
             name: "ADFKernelsTests", dependencies: ["ADFKernels", "ADTestKit"],
             swiftSettings: testSettings),
@@ -206,7 +147,7 @@ let package = Package(
         .testTarget(
             name: "ADConcurrencyTests", dependencies: ["ADConcurrency"], swiftSettings: strictSettings),
         .testTarget(
-            name: "ADTestKitTests", dependencies: ["ADTestKit", "ADTestKitSeams"],
+            name: "ADTestKitTests", dependencies: ["ADTestKit", "ADTestKitSeams", systemPackage],
             swiftSettings: strictSettings)
     ]
 )

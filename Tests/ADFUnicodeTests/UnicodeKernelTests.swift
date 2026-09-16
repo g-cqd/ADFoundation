@@ -1,6 +1,5 @@
+import ADFUnicode
 import Testing
-
-@testable import ADFUnicode
 
 private func scalars(_ s: String) -> [Unicode.Scalar] { Array(s.unicodeScalars) }
 private func values(_ s: [Unicode.Scalar]) -> [UInt32] { s.map(\.value) }
@@ -60,13 +59,6 @@ struct CaseFoldingTests {
         #expect(values(CaseFolding.lowercase([Unicode.Scalar(0x130)!])) == [0x69, 0x307])
         #expect(values(CaseFolding.lowercase([Unicode.Scalar(0x1E9E)!])) == [0xDF])
     }
-
-    @Test func finalSigmaContextPredicate() {
-        // Sigma preceded by a cased letter with nothing after ⇒ final.
-        #expect(CaseFolding.isFinalSigma(scalars("ΟΣ"), at: 1))
-        // Leading sigma (not preceded by a cased letter) ⇒ not final.
-        #expect(!CaseFolding.isFinalSigma(scalars("ΣΟ"), at: 0))
-    }
 }
 
 struct UnicodeSetsTests {
@@ -94,11 +86,5 @@ struct UnicodeSetsTests {
     @Test func boundsBailIsSafeBelowAndAbove() {
         #expect(!UnicodeSets.isChinese(0x0))  // below every CJK range
         #expect(!UnicodeSets.isChinese(0x10FFFF))  // above the assigned CJK ranges
-    }
-
-    @Test func nfdDecompositionLookup() {
-        #expect(UnicodeSets.nfdDecomposition(of: 0xE9).map(Array.init) == [0x65, 0x301])  // é
-        #expect(UnicodeSets.nfdDecomposition(of: 0x41) == nil)  // ASCII: decomposes to itself
-        #expect(UnicodeSets.nfdDecomposition(of: 0xAC00) == nil)  // Hangul: derived arithmetically, not tabled
     }
 }

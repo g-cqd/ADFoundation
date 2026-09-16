@@ -8,7 +8,7 @@ import Testing
 
 struct EditDistanceTests {
     private func dist(_ a: String, _ b: String, max: Int = .max) -> Int {
-        ADFText.editDistance(Array(a.utf8), Array(b.utf8), maxDistance: max)
+        AemiText.editDistance(Array(a.utf8), Array(b.utf8), maxDistance: max)
     }
 
     @Test func exactDistances() {
@@ -28,9 +28,9 @@ struct EditDistanceTests {
     }
 
     @Test func worksOverArbitraryEquatableElements() {
-        #expect(ADFText.editDistance([1, 2, 3], [1, 2, 3]) == 0)
-        #expect(ADFText.editDistance([1, 2, 3], [1, 4, 3]) == 1)
-        #expect(ADFText.editDistance(Array("café".utf16), Array("cafe".utf16)) == 1)
+        #expect(AemiText.editDistance([1, 2, 3], [1, 2, 3]) == 0)
+        #expect(AemiText.editDistance([1, 2, 3], [1, 4, 3]) == 1)
+        #expect(AemiText.editDistance(Array("café".utf16), Array("cafe".utf16)) == 1)
     }
 
     /// Exhaustive: every pair of strings of length ≤ 3 over {a,b,c}, every bound 0…4. Banded and the
@@ -48,14 +48,14 @@ struct EditDistanceTests {
         var failures: [String] = []
         for a in corpus {
             for b in corpus {
-                let full = ADFText.editDistanceFull(a, b)
+                let full = AemiText.editDistanceFull(a, b)
                 for k in 0 ... 4 {
                     let expected = full <= k ? full : k + 1
-                    let banded = ADFText.editDistanceBanded(a, b, maxDistance: k)
+                    let banded = AemiText.editDistanceBanded(a, b, maxDistance: k)
                     if banded != expected {
                         failures.append("banded(\(a),\(b),k=\(k))=\(banded) != \(expected) full=\(full)")
                     }
-                    let adaptive = ADFText.editDistance(a, b, maxDistance: k)
+                    let adaptive = AemiText.editDistance(a, b, maxDistance: k)
                     if adaptive != expected { failures.append("adaptive(\(a),\(b),k=\(k))=\(adaptive) != \(expected)") }
                 }
             }
@@ -74,10 +74,10 @@ struct EditDistanceTests {
             var b = a
             for _ in 0 ..< rng.int(10) where !b.isEmpty { b[rng.int(b.count)] = UInt8(97 + rng.int(5)) }
             for k in [0, 1, 2, 3, 5, 10, 50] {
-                let full = ADFText.editDistanceFull(a, b)
+                let full = AemiText.editDistanceFull(a, b)
                 let expected = full <= k ? full : k + 1
-                if ADFText.editDistanceBanded(a, b, maxDistance: k) != expected { failures += 1 }
-                if ADFText.editDistance(a, b, maxDistance: k) != expected { failures += 1 }
+                if AemiText.editDistanceBanded(a, b, maxDistance: k) != expected { failures += 1 }
+                if AemiText.editDistance(a, b, maxDistance: k) != expected { failures += 1 }
             }
         }
         #expect(failures == 0)
@@ -90,10 +90,10 @@ struct EditDistanceTests {
         for _ in 0 ..< 500 {
             let a = (0 ..< rng.int(40)).map { _ in UInt8(97 + rng.int(4)) }
             let b = (0 ..< rng.int(40)).map { _ in UInt8(97 + rng.int(4)) }
-            #expect(ADFText.editDistance(a, b) == ADFText.editDistance(b, a))
+            #expect(AemiText.editDistance(a, b) == AemiText.editDistance(b, a))
             for k in [0, 1, 3, 10] {
                 #expect(
-                    ADFText.editDistance(a, b, maxDistance: k) == ADFText.editDistance(b, a, maxDistance: k))
+                    AemiText.editDistance(a, b, maxDistance: k) == AemiText.editDistance(b, a, maxDistance: k))
             }
         }
     }
@@ -103,9 +103,9 @@ struct EditDistanceTests {
         let one: [UInt8] = [UInt8(ascii: "x")]
         let manyY = [UInt8](repeating: UInt8(ascii: "y"), count: 5000)
         let manyX = [UInt8](repeating: UInt8(ascii: "x"), count: 5000)
-        #expect(ADFText.editDistance(one, manyY) == 5000)  // 1 substitution + 4999 insertions
-        #expect(ADFText.editDistance(manyY, one) == 5000)  // symmetric
-        #expect(ADFText.editDistance(one, manyX) == 4999)  // one 'x' matches; 4999 insertions
+        #expect(AemiText.editDistance(one, manyY) == 5000)  // 1 substitution + 4999 insertions
+        #expect(AemiText.editDistance(manyY, one) == 5000)  // symmetric
+        #expect(AemiText.editDistance(one, manyX) == 4999)  // one 'x' matches; 4999 insertions
     }
 
     /// The pure functions are safe to fan out concurrently (no shared state).
@@ -116,7 +116,7 @@ struct EditDistanceTests {
         let serial = pairs.map { dist($0.0, $0.1) }
         let parallel = await withTaskGroup(of: (Int, Int).self) { group in
             for (i, p) in pairs.enumerated() {
-                group.addTask { (i, ADFText.editDistance(Array(p.0.utf8), Array(p.1.utf8))) }
+                group.addTask { (i, AemiText.editDistance(Array(p.0.utf8), Array(p.1.utf8))) }
             }
             var out = [Int](repeating: -1, count: pairs.count)
             for await (i, d) in group { out[i] = d }

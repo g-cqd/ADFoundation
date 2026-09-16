@@ -24,17 +24,8 @@ env:
 
 jobs:
   quality:
-    # Full-adopt of the reusable workflow for the COMMON legs: the gate (format/discipline +
-    # SwiftLint metrics + config/manifest drift + internal-tag check), build/test on macOS + Linux
-    # (debug + release, with coverage on the debug macOS leg), the macOS sanitizer matrix, and the
-    # DocC build. ADFoundation is a LEAF for resolution purposes: its only non-dev dependency is
-    # swift-syntax (a versioned package); the first-party AD-family deps (ADBuildTools, ADTestKit)
-    # are gated behind `ADF_DEV` (Package.swift lines 53–79), so a clean CI checkout resolves with
-    # NO unpublished siblings — hence `requires-published-siblings` is omitted (defaults false) and
-    # build/test run on every push. Sanitizers mirror the previous bespoke macOS matrix
-    # (address + thread). The package-UNIQUE invariants (tier isolation, warnings-as-errors over the
-    # core tiers, the Linux sanitizer pass, and the dev-graph compile) stay as jobs below.
-    uses: g-cqd/ADBuildTools/.github/workflows/swift-quality.yml@v1
+    # Exercise compatibility imports against the published Aemi implementation.
+    uses: Aemi-Studio/aemi/.github/workflows/swift-quality.yml@main
     with:
       # arcleak and dolly GATE (arcleak measured 0 findings family-wide; dolly runs the token
       # pass against .dolly-baseline.json, so only NEW clones fail). deadwood is report-only —
@@ -44,8 +35,7 @@ jobs:
       enable-sanitizers: true
       sanitizers: "address thread"
       enable-coverage: true
-      enable-docs: true
-      docs-target: ADFoundation
+      enable-docs: false
 
   strict-warnings:
     name: Warnings as errors (core tiers)
@@ -55,7 +45,7 @@ jobs:
       # No hosted macOS image ships Swift 6.4 (this package's tools-version); install the family's
       # pinned swift.org 6.4 dev snapshot, the same mechanism as the reusable workflow's macOS legs.
       - name: Install Swift 6.4 dev toolchain
-        uses: g-cqd/ADBuildTools/.github/actions/setup-swift@v1
+        uses: Aemi-Studio/aemi/.github/actions/setup-swift@main
       # Treat warnings as errors for the zero-dependency tiers only. The `ADFoundation` umbrella pulls
       # ADFCore / ADFIO / ADFText / ADFUnicode / ADFAtomics but not swift-syntax, so `-Xswiftc` can't
       # fail the build on swift-syntax's own warnings (which we don't control). This stays a CI flag —
@@ -82,7 +72,7 @@ jobs:
       - uses: actions/checkout@v4
       # No hosted macOS image ships Swift 6.4 — see strict-warnings.
       - name: Install Swift 6.4 dev toolchain
-        uses: g-cqd/ADBuildTools/.github/actions/setup-swift@v1
+        uses: Aemi-Studio/aemi/.github/actions/setup-swift@main
       # The package's defining invariant: the zero-dependency products (ADFCore / ADFUnicode /
       # ADFText / ADFIO and the ADFoundation umbrella) must never transitively link swift-syntax, so
       # the portable ADJSONCore and the apple-docs dylib keep clean resolution graphs. Build each in
@@ -93,7 +83,7 @@ jobs:
           rm -rf .build
           swift package resolve
           for product in ADFCore ADFUnicode ADFText ADFIO ADFoundation; do
-            log=$(swift build --product "$product" 2>&1)
+            log=$(swift build --target "$product" 2>&1)
             echo "$log"
             if echo "$log" | grep -qiE 'Compiling (SwiftSyntax|SwiftParser|SwiftDiagnostics)'; then
               echo "::error::$product transitively compiled swift-syntax — core tiers must stay swift-syntax-free"
@@ -136,30 +126,14 @@ jobs:
           fi
 
   dev-build:
-    name: Dev build (plugins, benchmarks, docs)
+    name: Dev build (plugins, benchmarks)
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       # No hosted macOS image ships Swift 6.4 — see strict-warnings.
       - name: Install Swift 6.4 dev toolchain
-        uses: g-cqd/ADBuildTools/.github/actions/setup-swift@v1
-      # Compile the ADF_DEV-only graph (the LintBuild build-tool plugin and the ordo-one benchmark
-      # target) so it can't bitrot, then build the DocC archives so doc links can't silently break.
-      # The reusable `quality` job builds the canonical single-target (ADFoundation) DocC; this job
-      # additionally compiles the full dev graph, which the reusable does not cover.
+        uses: Aemi-Studio/aemi/.github/actions/setup-swift@main
+      # Keep the compatibility benchmark and lint-plugin graph buildable.
+      # Implementation documentation is maintained in Aemi.
       - name: Build dev targets
         run: ADF_DEV=1 swift build
-      # Per-target DocC over every documentable LIBRARY module — full doc-link coverage of all
-      # shipped + test-kit modules. Deliberately NOT the all-targets invocation: with ADF_DEV=1
-      # that also documents the ordo-one benchmark EXECUTABLE (ADFoundationSuite), whose
-      # symbol-graph extraction the CI snapshot toolchain fails (NSCocoaErrorDomain 260 —
-      # ADFoundationSuite.symbolgraphs never materializes; Xcode 27 beta handles it fine).
-      # Enumerating the library targets keeps the gate strict while never touching the executable.
-      - name: Build documentation (library targets)
-        run: |
-          for t in ADFCore ADFUnicode ADFText ADFIO ADFMetrics ADConcurrency ADFoundation \
-                   ADFMacroSupport ADTestKit ADTestKitSeams ADTesting; do
-            echo "::group::DocC $t"
-            ADF_DEV=1 swift package generate-documentation --target "$t"
-            echo "::endgroup::"
-          done

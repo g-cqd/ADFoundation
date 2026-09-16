@@ -19,8 +19,8 @@ struct ADFKernelsRobustnessTests {
     /// the index for a given buffer + backend, and the per-byte predicate the index must satisfy.
     struct Kernel: Sendable {
         let name: String
-        let backends: [ADFKernels.Backend]
-        let run: @Sendable (UnsafePointer<UInt8>, Int, ADFKernels.Backend) -> Int
+        let backends: [AemiKernels.Backend]
+        let run: @Sendable (UnsafePointer<UInt8>, Int, AemiKernels.Backend) -> Int
         let predicate: @Sendable (UInt8) -> Bool
     }
 
@@ -32,7 +32,7 @@ struct ADFKernelsRobustnessTests {
             name: "indexOfStringStop",
             backends: [.fastest, .scalar, .sse2, .avx2, .neon],
             run: { base, count, backend in
-                ADFKernels.indexOfStringStop(
+                AemiKernels.indexOfStringStop(
                     base: base, count: count, quote: quote, escape: escape, backend: backend)
             },
             predicate: { $0 < 0x20 || $0 >= 0x80 || $0 == quote || $0 == escape }),
@@ -40,21 +40,21 @@ struct ADFKernelsRobustnessTests {
             name: "firstNonASCII",
             backends: [.fastest, .scalar, .sse2, .avx2, .neon],
             run: { base, count, backend in
-                ADFKernels.firstNonASCII(base: base, count: count, backend: backend)
+                AemiKernels.firstNonASCII(base: base, count: count, backend: backend)
             },
             predicate: { $0 >= 0x80 }),
         Kernel(
             name: "firstIndexOfByte",
             backends: [.fastest, .scalar],
             run: { base, count, backend in
-                ADFKernels.firstIndexOfByte(base: base, count: count, needle: 0x2C, backend: backend)
+                AemiKernels.firstIndexOfByte(base: base, count: count, needle: 0x2C, backend: backend)
             },
             predicate: { $0 == 0x2C }),
         Kernel(
             name: "firstIndexOfAny",
             backends: [.fastest, .scalar],
             run: { base, count, backend in
-                ADFKernels.firstIndexOfAny(
+                AemiKernels.firstIndexOfAny(
                     base: base, count: count, 0x26, 0x3C, 0x3E, 0x22, 0x27, backend: backend)
             },
             predicate: { $0 == 0x26 || $0 == 0x3C || $0 == 0x3E || $0 == 0x22 || $0 == 0x27 }),
@@ -62,7 +62,7 @@ struct ADFKernelsRobustnessTests {
             name: "indexOfControlOrAny",
             backends: [.fastest, .scalar],
             run: { base, count, backend in
-                ADFKernels.indexOfControlOrAny(
+                AemiKernels.indexOfControlOrAny(
                     base: base, count: count, 0x22, 0x5C, 0x2F, 0x22, 0x22, backend: backend)
             },
             predicate: { $0 < 0x20 || $0 == 0x22 || $0 == 0x5C || $0 == 0x2F }),
@@ -70,7 +70,7 @@ struct ADFKernelsRobustnessTests {
             name: "firstDisallowedText(field-value)",
             backends: [.fastest, .scalar],
             run: { base, count, backend in
-                ADFKernels.firstDisallowedText(
+                AemiKernels.firstDisallowedText(
                     base: base, count: count, minAllowed: 0x20, allowTab: true, backend: backend)
             },
             predicate: { $0 < 0x80 && ($0 == 0x7F || ($0 < 0x20 && $0 != 0x09)) }),
@@ -78,7 +78,7 @@ struct ADFKernelsRobustnessTests {
             name: "firstDisallowedText(request-target)",
             backends: [.fastest, .scalar],
             run: { base, count, backend in
-                ADFKernels.firstDisallowedText(
+                AemiKernels.firstDisallowedText(
                     base: base, count: count, minAllowed: 0x21, allowTab: false, backend: backend)
             },
             predicate: { $0 < 0x80 && ($0 == 0x7F || $0 <= 0x20) })
@@ -176,9 +176,9 @@ struct ADFKernelsRobustnessTests {
                 }
             }
             // foldASCII (transform): every backend must equal the scalar backend.
-            let foldReference = ADFKernels.foldedASCII(bytes, backend: .scalar)
-            for backend in [ADFKernels.Backend.fastest, .sse2, .avx2, .neon]
-            where ADFKernels.foldedASCII(bytes, backend: backend) != foldReference {
+            let foldReference = AemiKernels.foldedASCII(bytes, backend: .scalar)
+            for backend in [AemiKernels.Backend.fastest, .sse2, .avx2, .neon]
+            where AemiKernels.foldedASCII(bytes, backend: backend) != foldReference {
                 mismatches += 1
             }
         }

@@ -7,7 +7,7 @@ import Benchmark
 // Run with `ADF_DEV=1 swift package benchmark` (add `BENCHMARK_DISABLE_JEMALLOC=1` if jemalloc isn't
 // installed; CI installs it for malloc metrics). Each adaptive primitive's variants sit side by side
 // so their p-percentiles are directly comparable — this is what backs the dispatch thresholds
-// (`ADFText.bandedMinRowWidth`, `UTF8Validation.simdMinBytes`).
+// (`AemiText.bandedMinRowWidth`, `UTF8Validation.simdMinBytes`).
 
 private func nearStrings(_ n: Int, edits k: Int) -> (a: [UInt8], b: [UInt8]) {
     let a = (0 ..< n).map { UInt8(97 + ($0 % 5)) }
@@ -112,13 +112,13 @@ nonisolated(unsafe) let benchmarks = {
     for (n, k) in [(32, 2), (64, 2), (128, 2), (256, 3)] {
         let (a, b) = nearStrings(n, edits: k)
         Benchmark("editDistance/full n\(n) k\(k)") { bm in
-            for _ in bm.scaledIterations { blackHole(ADFText.editDistanceFull(a, b, maxDistance: k)) }
+            for _ in bm.scaledIterations { blackHole(AemiText.editDistanceFull(a, b, maxDistance: k)) }
         }
         Benchmark("editDistance/banded n\(n) k\(k)") { bm in
-            for _ in bm.scaledIterations { blackHole(ADFText.editDistanceBanded(a, b, maxDistance: k)) }
+            for _ in bm.scaledIterations { blackHole(AemiText.editDistanceBanded(a, b, maxDistance: k)) }
         }
         Benchmark("editDistance/adaptive n\(n) k\(k)") { bm in
-            for _ in bm.scaledIterations { blackHole(ADFText.editDistance(a, b, maxDistance: k)) }
+            for _ in bm.scaledIterations { blackHole(AemiText.editDistance(a, b, maxDistance: k)) }
         }
     }
 
@@ -167,19 +167,23 @@ nonisolated(unsafe) let benchmarks = {
     for n in [64, 256, 4096] {
         let content = contentBytes(n)
         Benchmark("kernels/fold scalar \(n)") { bm in
-            for _ in bm.scaledIterations { blackHole(ADFKernels.foldedASCII(content, backend: .scalar)) }
+            for _ in bm.scaledIterations { blackHole(AemiKernels.foldedASCII(content, backend: .scalar)) }
         }
         Benchmark("kernels/fold fastest \(n)") { bm in
-            for _ in bm.scaledIterations { blackHole(ADFKernels.foldedASCII(content, backend: .fastest)) }
+            for _ in bm.scaledIterations { blackHole(AemiKernels.foldedASCII(content, backend: .fastest)) }
         }
         Benchmark("kernels/string-stop scalar \(n)") { bm in
             for _ in bm.scaledIterations {
-                blackHole(ADFKernels.indexOfStringStop(content, quote: stopQuote, escape: stopEscape, backend: .scalar) ?? -1)
+                blackHole(
+                    AemiKernels.indexOfStringStop(content, quote: stopQuote, escape: stopEscape, backend: .scalar) ?? -1
+                )
             }
         }
         Benchmark("kernels/string-stop fastest \(n)") { bm in
             for _ in bm.scaledIterations {
-                blackHole(ADFKernels.indexOfStringStop(content, quote: stopQuote, escape: stopEscape, backend: .fastest) ?? -1)
+                blackHole(
+                    AemiKernels.indexOfStringStop(content, quote: stopQuote, escape: stopEscape, backend: .fastest)
+                        ?? -1)
             }
         }
     }
@@ -197,7 +201,7 @@ nonisolated(unsafe) let benchmarks = {
                 for vector in hammingCorpus {
                     vector.withUnsafeBufferPointer { pv in
                         guard let bv = pv.baseAddress else { return }
-                        sum += ADFKernels.hammingDistance(bq, bv, count: 64, backend: .scalar)
+                        sum += AemiKernels.hammingDistance(bq, bv, count: 64, backend: .scalar)
                     }
                 }
             }
@@ -212,7 +216,7 @@ nonisolated(unsafe) let benchmarks = {
                 for vector in hammingCorpus {
                     vector.withUnsafeBufferPointer { pv in
                         guard let bv = pv.baseAddress else { return }
-                        sum += ADFKernels.hammingDistance(bq, bv, count: 64, backend: .fastest)
+                        sum += AemiKernels.hammingDistance(bq, bv, count: 64, backend: .fastest)
                     }
                 }
             }
@@ -229,7 +233,7 @@ nonisolated(unsafe) let benchmarks = {
                     out.withUnsafeMutableBufferPointer { po in
                         guard let bq = pq.baseAddress, let bc = pc.baseAddress, let bo = po.baseAddress
                         else { return }
-                        ADFKernels.hammingScan(query: bq, corpus: bc, width: 64, count: 1000, into: bo)
+                        AemiKernels.hammingScan(query: bq, corpus: bc, width: 64, count: 1000, into: bo)
                     }
                 }
             }

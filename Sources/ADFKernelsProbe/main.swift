@@ -79,30 +79,30 @@ func runBench() {
     var foldOut = [UInt8](repeating: 0, count: n)
     let iterations = 5000
 
-    print("ADFKernelsProbe --bench backend=\(ADFKernels.activeBackend)")
+    print("ADFKernelsProbe --bench backend=\(AemiKernels.activeBackend)")
     content.withUnsafeBufferPointer { src in
         guard let base = src.baseAddress else { return }
         foldOut.withUnsafeMutableBufferPointer { dst in
             guard let out = dst.baseAddress else { return }
             for _ in 0 ..< 300 {  // warmup
-                sink &+= ADFKernels.indexOfStringStop(
+                sink &+= AemiKernels.indexOfStringStop(
                     base: base, count: n, quote: quote, escape: escape, backend: .fastest)
-                ADFKernels.foldASCII(into: out, from: base, count: n, backend: .fastest)
+                AemiKernels.foldASCII(into: out, from: base, count: n, backend: .fastest)
             }
             let stopScalar = timeNanosPerOp(iterations) {
-                sink &+= ADFKernels.indexOfStringStop(
+                sink &+= AemiKernels.indexOfStringStop(
                     base: base, count: n, quote: quote, escape: escape, backend: .scalar)
             }
             let stopFastest = timeNanosPerOp(iterations) {
-                sink &+= ADFKernels.indexOfStringStop(
+                sink &+= AemiKernels.indexOfStringStop(
                     base: base, count: n, quote: quote, escape: escape, backend: .fastest)
             }
             report("string-stop", bytes: n, scalarNanos: stopScalar, fastestNanos: stopFastest)
             let foldScalar = timeNanosPerOp(iterations) {
-                ADFKernels.foldASCII(into: out, from: base, count: n, backend: .scalar)
+                AemiKernels.foldASCII(into: out, from: base, count: n, backend: .scalar)
             }
             let foldFastest = timeNanosPerOp(iterations) {
-                ADFKernels.foldASCII(into: out, from: base, count: n, backend: .fastest)
+                AemiKernels.foldASCII(into: out, from: base, count: n, backend: .fastest)
             }
             report("fold", bytes: n, scalarNanos: foldScalar, fastestNanos: foldFastest)
         }
@@ -115,7 +115,7 @@ if CommandLine.arguments.contains("--bench") {
     exit(0)
 }
 
-let backends: [ADFKernels.Backend] = [.fastest, .scalar, .sse2, .avx2, .neon]
+let backends: [AemiKernels.Backend] = [.fastest, .scalar, .sse2, .avx2, .neon]
 let quote = UInt8(ascii: "\"")
 let escape = UInt8(ascii: "\\")
 var checks = 0
@@ -134,8 +134,8 @@ for offset in 0 ..< 48 {
 
         for backend in backends {
             checks += 2
-            if ADFKernels.foldedASCII(foldInput, backend: backend) != foldExpected { failures += 1 }
-            if ADFKernels.indexOfStringStop(stopInput, quote: quote, escape: escape, backend: backend)
+            if AemiKernels.foldedASCII(foldInput, backend: backend) != foldExpected { failures += 1 }
+            if AemiKernels.indexOfStringStop(stopInput, quote: quote, escape: escape, backend: backend)
                 != stopExpected
             {
                 failures += 1
@@ -159,13 +159,13 @@ for _ in 0 ..< 6000 {
     let byteExpected = input.firstIndex(of: byteNeedle)
     for backend in backends {
         checks += 3
-        if ADFKernels.foldedASCII(input, backend: backend) != foldExpected { failures += 1 }
-        if ADFKernels.indexOfStringStop(input, quote: quote, escape: escape, backend: backend)
+        if AemiKernels.foldedASCII(input, backend: backend) != foldExpected { failures += 1 }
+        if AemiKernels.indexOfStringStop(input, quote: quote, escape: escape, backend: backend)
             != stopExpected
         {
             failures += 1
         }
-        if ADFKernels.firstIndexOfByte(byteNeedle, in: input, backend: backend) != byteExpected {
+        if AemiKernels.firstIndexOfByte(byteNeedle, in: input, backend: backend) != byteExpected {
             failures += 1
         }
     }
@@ -184,19 +184,19 @@ for _ in 0 ..< 6000 {
         }
     }
     checks += 5
-    if ADFKernels.firstNonASCII(input) != nonAsciiExpected { failures += 1 }
+    if AemiKernels.firstNonASCII(input) != nonAsciiExpected { failures += 1 }
     input.withUnsafeBufferPointer { buffer in
         guard let base = buffer.baseAddress else { return }
         let n = input.count
-        let any = ADFKernels.firstIndexOfAny(base: base, count: n, 0x26, 0x3C, 0x3E, 0x22, 0x27)
+        let any = AemiKernels.firstIndexOfAny(base: base, count: n, 0x26, 0x3C, 0x3E, 0x22, 0x27)
         if (any == n ? nil : any) != anyExpected { failures += 1 }
-        let coa = ADFKernels.indexOfControlOrAny(base: base, count: n, 0x22, 0x5C, 0x2F, 0x22, 0x22)
+        let coa = AemiKernels.indexOfControlOrAny(base: base, count: n, 0x22, 0x5C, 0x2F, 0x22, 0x22)
         if (coa == n ? nil : coa) != controlOrAnyExpected { failures += 1 }
-        let dt = ADFKernels.firstDisallowedText(base: base, count: n, minAllowed: 0x20, allowTab: true)
+        let dt = AemiKernels.firstDisallowedText(base: base, count: n, minAllowed: 0x20, allowTab: true)
         if (dt == n ? nil : dt) != disallowedExpected { failures += 1 }
         // firstInvalidUTF8: SIMD (SSE under Rosetta / NEON native) vs scalar oracle.
-        if ADFKernels.firstInvalidUTF8(base: base, count: n)
-            != ADFKernels.firstInvalidUTF8(base: base, count: n, backend: .scalar)
+        if AemiKernels.firstInvalidUTF8(base: base, count: n)
+            != AemiKernels.firstInvalidUTF8(base: base, count: n, backend: .scalar)
         {
             failures += 1
         }
@@ -210,8 +210,8 @@ do {
         var bytes: [UInt8] = []
         for _ in 0 ..< reps { bytes += unit }
         checks += 1
-        let fast = ADFKernels.firstInvalidUTF8(bytes, backend: .fastest)
-        let scalar = ADFKernels.firstInvalidUTF8(bytes, backend: .scalar)
+        let fast = AemiKernels.firstInvalidUTF8(bytes, backend: .fastest)
+        let scalar = AemiKernels.firstInvalidUTF8(bytes, backend: .scalar)
         if fast != nil || scalar != nil { failures += 1 }
     }
 }
@@ -235,13 +235,13 @@ do {
         let fast: Int = a.withUnsafeBufferPointer { pa in
             b.withUnsafeBufferPointer { pb in
                 guard let ba = pa.baseAddress, let bb = pb.baseAddress else { return 0 }
-                return ADFKernels.hammingDistance(ba, bb, count: width)
+                return AemiKernels.hammingDistance(ba, bb, count: width)
             }
         }
         let scalar: Int = a.withUnsafeBufferPointer { pa in
             b.withUnsafeBufferPointer { pb in
                 guard let ba = pa.baseAddress, let bb = pb.baseAddress else { return 0 }
-                return ADFKernels.hammingDistance(ba, bb, count: width, backend: .scalar)
+                return AemiKernels.hammingDistance(ba, bb, count: width, backend: .scalar)
             }
         }
         if fast != reference { failures += 1 }
@@ -249,7 +249,7 @@ do {
     }
 }
 
-print("ADFKernelsProbe backend=\(ADFKernels.activeBackend) checks=\(checks) failures=\(failures)")
+print("ADFKernelsProbe backend=\(AemiKernels.activeBackend) checks=\(checks) failures=\(failures)")
 if failures == 0 {
     print("RESULT: PASS")
 } else {

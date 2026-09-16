@@ -9,7 +9,7 @@ struct ADFKernelsDateTests {
         var s = s
         return s.withUTF8 { b in
             guard let base = b.baseAddress else { return nil }
-            return ADFKernels.parseISO8601UTCSeconds(base, count: b.count)
+            return AemiKernels.parseISO8601UTCSeconds(base, count: b.count)
         }
     }
 

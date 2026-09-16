@@ -12,11 +12,11 @@ struct ADFKernelsHammingTests {
         return total
     }
 
-    static func distance(_ a: [UInt8], _ b: [UInt8], _ backend: ADFKernels.Backend) -> Int {
+    static func distance(_ a: [UInt8], _ b: [UInt8], _ backend: AemiKernels.Backend) -> Int {
         a.withUnsafeBufferPointer { pa in
             b.withUnsafeBufferPointer { pb in
                 guard let baseA = pa.baseAddress, let baseB = pb.baseAddress else { return 0 }
-                return ADFKernels.hammingDistance(baseA, baseB, count: a.count, backend: backend)
+                return AemiKernels.hammingDistance(baseA, baseB, count: a.count, backend: backend)
             }
         }
     }
@@ -47,7 +47,7 @@ struct ADFKernelsHammingTests {
                     out.withUnsafeMutableBufferPointer { po in
                         guard let bq = pq.baseAddress, let bc = pc.baseAddress, let bo = po.baseAddress
                         else { return }
-                        ADFKernels.hammingScan(query: bq, corpus: bc, width: width, count: count, into: bo)
+                        AemiKernels.hammingScan(query: bq, corpus: bc, width: width, count: count, into: bo)
                     }
                 }
             }

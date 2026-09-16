@@ -16,8 +16,8 @@ struct ADFKernelsUTF8Tests {
             [0xEE, 0x80, 0x80], [0xEF, 0xBF, 0xBF], [0xF0, 0x90, 0x80, 0x80], [0xF4, 0x8F, 0xBF, 0xBF]
         ]
         for bytes in valid {
-            #expect(ADFKernels.firstInvalidUTF8(bytes, backend: .fastest) == nil, "\(bytes)")
-            #expect(ADFKernels.firstInvalidUTF8(bytes, backend: .scalar) == nil, "\(bytes)")
+            #expect(AemiKernels.firstInvalidUTF8(bytes, backend: .fastest) == nil, "\(bytes)")
+            #expect(AemiKernels.firstInvalidUTF8(bytes, backend: .scalar) == nil, "\(bytes)")
         }
         let invalid: [([UInt8], Int)] = [
             ([0x80], 0),  // lone continuation
@@ -37,8 +37,8 @@ struct ADFKernelsUTF8Tests {
             ([0x41, 0x41, 0x41, 0xF0, 0x90], 3)  // truncated 4-byte after ASCII
         ]
         for (bytes, offset) in invalid {
-            #expect(ADFKernels.firstInvalidUTF8(bytes, backend: .fastest) == offset, "\(bytes)")
-            #expect(ADFKernels.firstInvalidUTF8(bytes, backend: .scalar) == offset, "\(bytes)")
+            #expect(AemiKernels.firstInvalidUTF8(bytes, backend: .fastest) == offset, "\(bytes)")
+            #expect(AemiKernels.firstInvalidUTF8(bytes, backend: .scalar) == offset, "\(bytes)")
         }
     }
 
@@ -66,8 +66,8 @@ struct ADFKernelsUTF8Tests {
             var buffer: [UInt8] = []
             for _ in 0 ..< rng.int(12) { buffer += Self.units[rng.int(Self.units.count)] }
             if rng.int(3) == 0, !buffer.isEmpty { buffer[rng.int(buffer.count)] = UInt8(rng.int(256)) }
-            if ADFKernels.firstInvalidUTF8(buffer, backend: .fastest)
-                != ADFKernels.firstInvalidUTF8(buffer, backend: .scalar)
+            if AemiKernels.firstInvalidUTF8(buffer, backend: .fastest)
+                != AemiKernels.firstInvalidUTF8(buffer, backend: .scalar)
             {
                 mismatches += 1
             }
@@ -87,8 +87,8 @@ struct ADFKernelsUTF8Tests {
                 for offset in 0 ... size {
                     var buffer = [UInt8](repeating: UInt8(ascii: "a"), count: size)
                     buffer.insert(contentsOf: unit, at: offset)
-                    if ADFKernels.firstInvalidUTF8(buffer, backend: .fastest)
-                        != ADFKernels.firstInvalidUTF8(buffer, backend: .scalar)
+                    if AemiKernels.firstInvalidUTF8(buffer, backend: .fastest)
+                        != AemiKernels.firstInvalidUTF8(buffer, backend: .scalar)
                     {
                         mismatches += 1
                     }
@@ -101,7 +101,7 @@ struct ADFKernelsUTF8Tests {
     @Test func longMultibyteValidatesValid() {
         let bytes = Array(String(repeating: "日本語テキスト résumé café 😀🎉 ", count: 200).utf8)
         #expect(bytes.count > 4096)  // exercises many SIMD blocks
-        #expect(ADFKernels.firstInvalidUTF8(bytes, backend: .fastest) == nil)
-        #expect(ADFKernels.firstInvalidUTF8(bytes, backend: .scalar) == nil)
+        #expect(AemiKernels.firstInvalidUTF8(bytes, backend: .fastest) == nil)
+        #expect(AemiKernels.firstInvalidUTF8(bytes, backend: .scalar) == nil)
     }
 }

@@ -8,7 +8,7 @@ import Testing
 // absent), so this whole suite runs on any host: on arm64 `.neon` exercises NEON while `.sse2`/`.avx2`
 // fall to scalar; on x86 the reverse. Real AVX2/dotprod execution is validated on the Linux CI legs.
 struct ADFKernelsTests {
-    static let backends: [ADFKernels.Backend] = [.fastest, .scalar, .sse2, .avx2, .neon]
+    static let backends: [AemiKernels.Backend] = [.fastest, .scalar, .sse2, .avx2, .neon]
 
     // MARK: - Independent references
 
@@ -40,7 +40,7 @@ struct ADFKernelsTests {
                 var input = [UInt8](repeating: UInt8(ascii: "m"), count: 48)
                 input[offset] = UInt8(value)
                 let expected = Self.referenceFold(input)
-                for backend in Self.backends where ADFKernels.foldedASCII(input, backend: backend) != expected {
+                for backend in Self.backends where AemiKernels.foldedASCII(input, backend: backend) != expected {
                     mismatches += 1
                 }
             }
@@ -58,7 +58,7 @@ struct ADFKernelsTests {
             input.reserveCapacity(count)
             for _ in 0 ..< count { input.append(UInt8(rng.int(256))) }
             let expected = Self.referenceFold(input)
-            for backend in Self.backends where ADFKernels.foldedASCII(input, backend: backend) != expected {
+            for backend in Self.backends where AemiKernels.foldedASCII(input, backend: backend) != expected {
                 mismatches += 1
             }
         }
@@ -70,7 +70,7 @@ struct ADFKernelsTests {
         let expected = Self.referenceFold(buffer)
         buffer.withUnsafeMutableBufferPointer { storage in
             guard let base = storage.baseAddress else { return }
-            ADFKernels.foldASCII(into: base, from: base, count: storage.count)
+            AemiKernels.foldASCII(into: base, from: base, count: storage.count)
         }
         #expect(buffer == expected)
     }
@@ -89,7 +89,7 @@ struct ADFKernelsTests {
                 input[offset] = UInt8(value)
                 let expected = Self.referenceStop(input, quote, escape)
                 for backend in Self.backends
-                where ADFKernels.indexOfStringStop(input, quote: quote, escape: escape, backend: backend) != expected {
+                where AemiKernels.indexOfStringStop(input, quote: quote, escape: escape, backend: backend) != expected {
                     mismatches += 1
                 }
             }
@@ -103,7 +103,8 @@ struct ADFKernelsTests {
         let expected = Self.referenceStop(input, UInt8(ascii: "="), UInt8(ascii: ";"))
         var mismatches = 0
         for backend in Self.backends
-        where ADFKernels.indexOfStringStop(input, quote: UInt8(ascii: "="), escape: UInt8(ascii: ";"), backend: backend)
+        where AemiKernels.indexOfStringStop(
+            input, quote: UInt8(ascii: "="), escape: UInt8(ascii: ";"), backend: backend)
             != expected
         {
             mismatches += 1
@@ -128,7 +129,7 @@ struct ADFKernelsTests {
             }
             let expected = Self.referenceStop(input, quote, escape)
             for backend in Self.backends
-            where ADFKernels.indexOfStringStop(input, quote: quote, escape: escape, backend: backend) != expected {
+            where AemiKernels.indexOfStringStop(input, quote: quote, escape: escape, backend: backend) != expected {
                 mismatches += 1
             }
         }
@@ -147,8 +148,8 @@ struct ADFKernelsTests {
             for _ in 0 ..< count { input.append(UInt8(rng.int(16))) }  // small alphabet ⇒ frequent hits
             let needle = UInt8(rng.int(16))
             let expected = input.firstIndex(of: needle)
-            let fast = ADFKernels.firstIndexOfByte(needle, in: input, backend: .fastest)
-            let scalar = ADFKernels.firstIndexOfByte(needle, in: input, backend: .scalar)
+            let fast = AemiKernels.firstIndexOfByte(needle, in: input, backend: .fastest)
+            let scalar = AemiKernels.firstIndexOfByte(needle, in: input, backend: .scalar)
             if fast != expected || scalar != expected { mismatches += 1 }
         }
         #expect(mismatches == 0)
@@ -166,8 +167,8 @@ struct ADFKernelsTests {
                 let expected: Int? = input.firstIndex { needles.contains($0) }
                 input.withUnsafeBufferPointer { buffer in
                     guard let base = buffer.baseAddress else { return }
-                    for backend in [ADFKernels.Backend.fastest, .scalar] {
-                        let index = ADFKernels.firstIndexOfAny(
+                    for backend in [AemiKernels.Backend.fastest, .scalar] {
+                        let index = AemiKernels.firstIndexOfAny(
                             base: base, count: 40,
                             needles[0], needles[1], needles[2], needles[3], needles[4], backend: backend)
                         if (index == 40 ? nil : index) != expected { mismatches += 1 }
@@ -188,7 +189,7 @@ struct ADFKernelsTests {
                 input[offset] = UInt8(value)
                 let expected = Self.referenceNonASCII(input)
                 for backend in Self.backends
-                where ADFKernels.firstNonASCII(input, backend: backend) != expected {
+                where AemiKernels.firstNonASCII(input, backend: backend) != expected {
                     mismatches += 1
                 }
             }
@@ -218,8 +219,8 @@ struct ADFKernelsTests {
                     let expected = reference(input, minAllowed, allowTab)
                     input.withUnsafeBufferPointer { buffer in
                         guard let base = buffer.baseAddress else { return }
-                        for backend in [ADFKernels.Backend.fastest, .scalar] {
-                            let index = ADFKernels.firstDisallowedText(
+                        for backend in [AemiKernels.Backend.fastest, .scalar] {
+                            let index = AemiKernels.firstDisallowedText(
                                 base: base, count: 40, minAllowed: minAllowed, allowTab: allowTab,
                                 backend: backend)
                             if (index == 40 ? nil : index) != expected { mismatches += 1 }
@@ -243,8 +244,8 @@ struct ADFKernelsTests {
                 let expected: Int? = input.firstIndex { $0 < 0x20 || needles.contains($0) }
                 input.withUnsafeBufferPointer { buffer in
                     guard let base = buffer.baseAddress else { return }
-                    for backend in [ADFKernels.Backend.fastest, .scalar] {
-                        let index = ADFKernels.indexOfControlOrAny(
+                    for backend in [AemiKernels.Backend.fastest, .scalar] {
+                        let index = AemiKernels.indexOfControlOrAny(
                             base: base, count: 40,
                             needles[0], needles[1], needles[2], needles[3], needles[4], backend: backend)
                         if (index == 40 ? nil : index) != expected { mismatches += 1 }
@@ -258,7 +259,7 @@ struct ADFKernelsTests {
     // MARK: - Detection
 
     @Test func activeBackendIsNamed() {
-        let name = ADFKernels.activeBackend
+        let name = AemiKernels.activeBackend
         #expect(!name.isEmpty)
         let known = ["scalar", "sse2", "sse4.2", "avx2", "avx512", "neon", "neon+dotprod", "neon+i8mm"]
         #expect(known.contains(name))

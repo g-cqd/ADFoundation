@@ -46,12 +46,10 @@ jobs:
       # pinned swift.org 6.4 dev snapshot, the same mechanism as the reusable workflow's macOS legs.
       - name: Install Swift 6.4 dev toolchain
         uses: Aemi-Studio/aemi/.github/actions/setup-swift@main
-      # Treat warnings as errors for the zero-dependency tiers only. The `ADFoundation` umbrella pulls
-      # ADFCore / ADFIO / ADFText / ADFUnicode / ADFAtomics but not swift-syntax, so `-Xswiftc` can't
-      # fail the build on swift-syntax's own warnings (which we don't control). This stays a CI flag —
-      # never a package setting — so consumers' builds are never gated on a future toolchain's warnings.
-      - name: Build core tiers with -warnings-as-errors
-        run: swift build --target ADFoundation -Xswiftc -warnings-as-errors
+      # Package.swift scopes warnings-as-errors to this package's targets.
+      # A global driver flag conflicts with SwiftPM's suppression for dependencies.
+      - name: Build compatibility targets with strict package settings
+        run: swift build --target ADFoundation
 
   strict-warnings-linux:
     name: Warnings as errors (core tiers, Linux)
@@ -60,10 +58,9 @@ jobs:
     container: swiftlang/swift:nightly-6.4.x-noble@sha256:54970846d48a8255eee5986aa5bbd259b7f73bbf38429cc2428ce6a62a390b47
     steps:
       - uses: actions/checkout@v4
-      # Same warnings-as-errors gate as macOS, but over the Glibc #else branches in ADFIO. Stays a CI
-      # flag, never a package setting, for the same reason documented on the macOS job.
-      - name: Build core tiers with -warnings-as-errors
-        run: swift build --target ADFoundation -Xswiftc -warnings-as-errors
+      # Use the same target-scoped strict settings on Linux.
+      - name: Build compatibility targets with strict package settings
+        run: swift build --target ADFoundation
 
   tier-isolation:
     name: Tier isolation (core tiers stay swift-syntax-free)
